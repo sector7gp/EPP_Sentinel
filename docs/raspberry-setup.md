@@ -15,7 +15,19 @@
 
 ```bash
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y python3-venv python3-pip fswebcam
+sudo apt install -y python3-venv python3-pip fswebcam ffmpeg
+```
+
+> `ffmpeg` solo es necesario si se usa una cámara IP/RTSP (ver `CAMERA_SOURCE`).
+
+Dependencias de runtime para Pillow (procesamiento de imágenes):
+
+```bash
+sudo apt install -y \
+  libopenjp2-7 \
+  libjpeg62-turbo \
+  zlib1g \
+  libtiff6
 ```
 
 Para Pi OS Bookworm, opcionalmente: `sudo apt install -y libcamera-apps`
@@ -47,6 +59,26 @@ BACKEND_URL=https://tu-servidor.com
 DEVICE_ID=<uuid>
 DEVICE_TOKEN=<token>
 CONFIG_POLL_SECONDS=300
+```
+
+## Fuente de cámara
+
+Por defecto el agente captura desde una webcam USB local (`fswebcam`, con
+`libcamera-still` como respaldo). Para usar una **cámara IP/RTSP**, indicar la
+URL completa en `CAMERA_SOURCE` (requiere `ffmpeg`):
+
+```
+CAMERA_SOURCE=rtsp://admin:Password@10.10.7.129:554
+```
+
+El agente extrae un fotograma del stream con `ffmpeg` (transporte TCP) en cada
+captura, lo escala a la resolución configurada y lo comprime como JPEG. Si
+`CAMERA_SOURCE` queda vacío, se usa la webcam local.
+
+Probar el stream manualmente:
+
+```bash
+ffmpeg -rtsp_transport tcp -i "rtsp://admin:Password@10.10.7.129:554" -frames:v 1 prueba.jpg
 ```
 
 ## Probar cámara

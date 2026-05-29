@@ -13,6 +13,7 @@ class AgentConfig:
     device_token: str
     config_poll_seconds: int
     queue_db: str
+    camera_source: str = ""
     mock_camera: bool = False
 
 
@@ -23,5 +24,6 @@ def load_config(mock_camera: bool = False) -> AgentConfig:
         device_token=os.getenv("DEVICE_TOKEN", ""),
         config_poll_seconds=int(os.getenv("CONFIG_POLL_SECONDS", "300")),
         queue_db=os.getenv("QUEUE_DB", "./queue.db"),
+        camera_source=os.getenv("CAMERA_SOURCE", "").strip(),
         mock_camera=mock_camera,
     )

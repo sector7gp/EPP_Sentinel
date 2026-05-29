@@ -86,6 +86,7 @@ def run_loop(mock_camera: bool = False) -> None:
                         jpeg_quality=int(img_cfg.get("jpeg_quality", 75)),
                         max_kb=int(img_cfg.get("max_kb", 500)),
                         mock=mock_camera,
+                        source=config.camera_source,
                     )
                     queue.enqueue(str(dest))
                     last_capture = now
@@ -100,9 +101,12 @@ def run_loop(mock_camera: bool = False) -> None:
 
 
 def test_camera(mock: bool) -> None:
+    config = load_config(mock_camera=mock)
     dest = PENDING_DIR / "test.jpg"
     PENDING_DIR.mkdir(parents=True, exist_ok=True)
-    capture_image(dest, 640, 480, 75, 500, mock=mock)
+    if config.camera_source and not mock:
+        logger.info("Usando fuente RTSP: %s", config.camera_source)
+    capture_image(dest, 640, 480, 75, 500, mock=mock, source=config.camera_source)
     logger.info("Imagen de prueba guardada en %s (%s bytes)", dest, dest.stat().st_size)
 
 
