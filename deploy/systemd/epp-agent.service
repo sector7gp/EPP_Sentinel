@@ -1,0 +1,16 @@
+[Unit]
+Description=EPP Sentinel capture agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/epp-sentinel/agent
+EnvironmentFile=/opt/epp-sentinel/agent/.env
+ExecStart=/opt/epp-sentinel/agent/.venv/bin/python main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

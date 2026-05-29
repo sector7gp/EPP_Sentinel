@@ -1,0 +1,48 @@
+# Perfil producción con PostgreSQL
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: epp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-epp_secret}
+      POSTGRES_DB: epp_sentinel
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://epp:${POSTGRES_PASSWORD:-epp_secret}@db:5432/epp_sentinel
+      SECRET_KEY: ${SECRET_KEY}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://localhost}
+      STORAGE_PATH: /app/storage
+    volumes:
+      - api_storage:/app/storage
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../frontend
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.prod.conf.example:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+      - web
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  api_storage:

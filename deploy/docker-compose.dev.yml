@@ -1,0 +1,22 @@
+services:
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite:////app/data/epp_sentinel.db
+      SECRET_KEY: dev-secret-key
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin
+      CORS_ORIGINS: http://localhost:5173
+      STORAGE_PATH: /app/storage
+    volumes:
+      - ../backend:/app
+      - api_storage_dev:/app/storage
+      - sqlite_data:/app/data
+
+volumes:
+  api_storage_dev:
+  sqlite_data:
