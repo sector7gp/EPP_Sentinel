@@ -21,11 +21,33 @@ pip install -r requirements.txt
 cp .env.example .env
 # Editar .env: SECRET_KEY, ADMIN_PASSWORD, OPENAI_API_KEY (opcional)
 alembic upgrade head
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8000          # solo accesible desde localhost
 ```
 
 API: http://localhost:8000/docs  
 Admin por defecto: `admin` / `admin` (cambiar en `.env`)
+
+#### Acceder desde otro equipo (p. ej. la Raspberry)
+
+Por defecto uvicorn escucha solo en `127.0.0.1`. Para que otros hosts de la red
+(la Raspberry, otro PC) puedan conectarse, enlaza a todas las interfaces con
+`--host 0.0.0.0`:
+
+```bash
+uvicorn app.main:app --port 8000 --host 0.0.0.0
+```
+
+Luego, en el agente, apunta `BACKEND_URL` a la IP del servidor (no `localhost`):
+
+```
+BACKEND_URL=http://192.168.1.50:8000   # IP del servidor en la LAN
+```
+
+Comprueba conectividad desde la Raspberry: `curl http://192.168.1.50:8000/docs`.
+Si no responde, revisa el firewall del servidor (abrir el puerto 8000) y que
+ambos equipos estén en la misma red. CORS (`CORS_ORIGINS`) **no** afecta al
+agente; solo es necesario para abrir el panel web desde otro equipo (añade ahí
+la URL del frontend).
 
 ### 2. Frontend
 
