@@ -17,6 +17,7 @@ from agent.scheduler import interval_seconds, is_within_schedule
 from agent.uploader import Uploader, retry_delay
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("epp-agent")
 
 PENDING_DIR = Path(__file__).parent / "pending"
@@ -110,11 +111,62 @@ def test_camera(mock: bool) -> None:
     logger.info("Imagen de prueba guardada en %s (%s bytes)", dest, dest.stat().st_size)
 
 
+def diagnose(mock_camera: bool = False) -> None:
+    config = load_config(mock_camera=mock_camera)
+    tok = config.device_token
+    masked = (tok[:4] + "..." + tok[-4:]) if len(tok) > 8 else ("(vacío)" if not tok else "(corto)")
+
+    print("=== Configuración ===")
+    print(f"  BACKEND_URL   = {config.backend_url or '(vacío)'}")
+    print(f"  DEVICE_ID     = {config.device_id or '(vacío)'}")
+    print(f"  DEVICE_TOKEN  = {masked}")
+    print(f"  CAMERA_SOURCE = {config.camera_source or '(webcam local)'}")
+    print(f"  QUEUE_DB      = {config.queue_db}")
+
+    if "localhost" in config.backend_url or "127.0.0.1" in config.backend_url:
+        print("  ⚠️  BACKEND_URL apunta a localhost: en la Raspberry debe ser la IP/dominio del servidor.")
+
+    ok = True
+    if not config.device_id or not config.device_token:
+        print("\n❌ Falta DEVICE_ID o DEVICE_TOKEN en .env")
+        ok = False
+
+    print("\n=== Conexión con el backend ===")
+    uploader = Uploader(config)
+    conn_ok, message = uploader.check_connection()
+    print(f"  {'✅' if conn_ok else '❌'} {message}")
+    ok = ok and conn_ok
+
+    print("\n=== Cola de subidas ===")
+    queue = UploadQueue(config.queue_db)
+    stats = queue.stats()
+    if not stats:
+        print("  (cola vacía: aún no se ha capturado/encolado ninguna imagen)")
+    else:
+        labels = {
+            "pending": "pendientes",
+            "uploading": "subiendo",
+            "failed": "fallidas (con reintentos)",
+            "acked": "confirmadas por el backend",
+        }
+        for status, count in sorted(stats.items()):
+            print(f"  {labels.get(status, status):32} {count}")
+
+    print()
+    print("✅ Diagnóstico OK: el agente puede comunicarse con el backend." if ok
+          else "❌ Hay problemas de configuración o conexión (ver arriba).")
+    sys.exit(0 if ok else 1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="EPP Sentinel Agent")
     parser.add_argument("--mock-camera", action="store_true", help="Generar imagen sintética")
     parser.add_argument("--test-camera", action="store_true", help="Probar captura y salir")
+    parser.add_argument("--diagnose", action="store_true", help="Verificar config, conexión y cola")
     args = parser.parse_args()
+    if args.diagnose:
+        diagnose(args.mock_camera)
+        return
     if args.test_camera:
         test_camera(args.mock_camera)
         return

@@ -100,6 +100,39 @@ sudo systemctl start epp-agent
 sudo journalctl -u epp-agent -f
 ```
 
+## Diagnóstico (verificar envío y conexión)
+
+Si no estás seguro de si el agente está enviando imágenes o hay un error de
+conexión, ejecuta el diagnóstico. Verifica la configuración, prueba la
+autenticación contra el backend y muestra el estado de la cola de subidas:
+
+```bash
+cd /opt/epp-sentinel/agent
+source .venv/bin/activate
+python main.py --diagnose
+```
+
+Interpretación de la cola:
+
+- **pendientes / fallidas** altas y subiendo → el agente captura pero **no logra
+  subir** (revisa `BACKEND_URL`, red, certificado TLS).
+- **confirmadas** creciendo → las imágenes **sí llegan** al backend.
+- **cola vacía** → aún no se ha capturado (revisa el horario `schedule` en el
+  panel y que esté dentro de la franja activa).
+
+Errores comunes que reporta:
+
+- `Token o DEVICE_ID inválido` → revisa `DEVICE_ID`/`DEVICE_TOKEN` en `.env`.
+- `No se pudo conectar a ...` → backend caído, IP/puerto incorrectos o sin red.
+- ⚠️ `BACKEND_URL apunta a localhost` → en la Raspberry debe ser la IP o dominio
+  del servidor, **no** `localhost`.
+
+Para ver el log en vivo del servicio (incluye errores de subida y de config):
+
+```bash
+sudo journalctl -u epp-agent -f
+```
+
 ## Operación autónoma
 
 El servicio `epp-agent` se reinicia automáticamente tras cortes de energía (`Restart=always`).

@@ -65,3 +65,10 @@ class UploadQueue:
                 "UPDATE queue SET status='failed', retries=?, last_attempt=? WHERE id=?",
                 (retries + 1, time.time(), item_id),
             )
+
+    def stats(self) -> dict[str, int]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT status, COUNT(*) FROM queue GROUP BY status"
+            ).fetchall()
+        return {status: count for status, count in rows}
