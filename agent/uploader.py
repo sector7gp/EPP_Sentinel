@@ -13,16 +13,19 @@ class Uploader:
     def __init__(self, config: AgentConfig):
         self.config = config
 
-    def upload(self, file_path: Path) -> bool:
+    def upload(self, file_path: Path, stream_id: str | None = None) -> bool:
         url = f"{self.config.backend_url}/api/v1/captures"
         headers = {"X-Device-Token": self.config.device_token}
+        data: dict[str, str] = {}
+        if stream_id:
+            data["stream_id"] = stream_id
         with open(file_path, "rb") as f:
             files = {"file": (file_path.name, f, "image/jpeg")}
             with httpx.Client(timeout=120.0, verify=True) as client:
-                response = client.post(url, headers=headers, files=files)
+                response = client.post(url, headers=headers, files=files, data=data)
                 response.raise_for_status()
-                data = response.json()
-                return data.get("capture_id") is not None
+                body = response.json()
+                return body.get("capture_id") is not None
 
     def fetch_config(self) -> dict | None:
         url = f"{self.config.backend_url}/api/v1/devices/{self.config.device_id}/config"

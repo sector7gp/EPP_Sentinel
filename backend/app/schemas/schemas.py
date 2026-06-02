@@ -17,14 +17,23 @@ class LoginRequest(BaseModel):
 
 
 class DeviceCreate(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=128)
+    location: Optional[str] = Field(default=None, max_length=256)
+
+
+class DeviceUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    location: Optional[str] = Field(default=None, max_length=256)
 
 
 class DeviceResponse(BaseModel):
     id: str
     name: str
+    location: Optional[str] = None
     api_token: str
     last_seen_at: Optional[datetime] = None
+    online: bool = False
+    stream_count: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -104,8 +113,52 @@ class DeviceConfigResponse(BaseModel):
     device_id: str
     schedule: ScheduleResponse
     image_settings: ImageSettingsResponse
-    profile_id: Optional[str]
+    streams: List["StreamConfigResponse"]
     config_version: str
+
+
+class StreamConnectionConfig(BaseModel):
+    device: Optional[str] = None
+    url: Optional[str] = None
+
+
+class StreamCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    source_type: str = Field(pattern="^(usb|rtsp)$")
+    connection_config: StreamConnectionConfig
+    profile_id: str
+    enabled: bool = True
+
+
+class StreamUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    source_type: Optional[str] = Field(default=None, pattern="^(usb|rtsp)$")
+    connection_config: Optional[StreamConnectionConfig] = None
+    profile_id: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
+class StreamResponse(BaseModel):
+    id: str
+    device_id: str
+    name: str
+    enabled: bool
+    source_type: str
+    connection_config: StreamConnectionConfig
+    profile_id: str
+    profile_name: Optional[str] = None
+    required_epp: List[str] = Field(default_factory=list)
+
+    model_config = {"from_attributes": True}
+
+
+class StreamConfigResponse(BaseModel):
+    id: str
+    name: str
+    enabled: bool
+    source_type: str
+    connection_config: StreamConnectionConfig
+    profile_id: str
 
 
 class CaptureUploadResponse(BaseModel):
@@ -136,6 +189,8 @@ class AnalysisResponse(BaseModel):
     capture_id: str
     device_id: str
     device_name: str
+    stream_id: Optional[str] = None
+    stream_name: Optional[str] = None
     image_url: str
     captured_at: datetime
     analyzed_at: datetime
@@ -143,9 +198,23 @@ class AnalysisResponse(BaseModel):
     cumple_normativa: bool
     observaciones: Optional[str]
     epp_results: Dict[str, bool]
+    required_epp: List[str] = Field(default_factory=list)
     status: str
 
     model_config = {"from_attributes": True}
+
+
+class StreamDashboardItem(BaseModel):
+    stream_id: str
+    stream_name: str
+    device_id: str
+    device_name: str
+    device_location: Optional[str]
+    device_online: bool
+    profile_id: str
+    profile_name: str
+    required_epp: List[str]
+    latest_analysis: Optional[AnalysisResponse] = None
 
 
 class AnalysisListResponse(BaseModel):

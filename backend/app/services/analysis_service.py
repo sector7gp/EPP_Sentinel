@@ -1,29 +1,38 @@
+from __future__ import annotations
+
 import json
 from pathlib import Path
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.constants import AuditEventType
-from app.models import AISettings, Analysis, Capture, Device, OperatorProfile
+from app.models import AISettings, Analysis, Capture, Device, OperatorProfile, VideoStream
 from app.schemas.schemas import EPPAnalysisResult
 from app.services.audit import log_event
-from app.services.device_service import ensure_default_profile
+from app.services.profile_service import ensure_default_profile
 from app.ai.factory import get_ai_provider
 from app.ai.prompt_builder import PromptBuilder
 
 
-def get_required_epp(db: Session, device: Device) -> list[str]:
-    profile_id = None
-    if device.profile_assignment:
-        profile_id = device.profile_assignment.profile_id
-    if not profile_id:
-        default = ensure_default_profile(db)
-        profile_id = default.id
+def get_required_epp_for_profile(db: Session, profile_id: str) -> list[str]:
     profile = db.get(OperatorProfile, profile_id)
     if not profile:
         return []
     return [r.epp_type for r in profile.epp_requirements]
+
+
+def get_required_epp_for_stream(db: Session, stream: VideoStream | None) -> list[str]:
+    if stream and stream.profile_id:
+        return get_required_epp_for_profile(db, stream.profile_id)
+    default = ensure_default_profile(db)
+    return get_required_epp_for_profile(db, default.id)
+
+
+def get_stream_profile_id(db: Session, stream: VideoStream | None) -> str:
+    if stream and stream.profile_id:
+        return stream.profile_id
+    return ensure_default_profile(db).id
 
 
 def compute_compliance(result: dict, required: list[str]) -> bool:
@@ -38,7 +47,11 @@ def run_analysis(db: Session, capture: Capture, image_bytes: bytes) -> Analysis:
     if not device:
         raise ValueError("Device not found")
 
-    required = get_required_epp(db, device)
+    stream = None
+    if capture.stream_id:
+        stream = db.get(VideoStream, capture.stream_id)
+
+    required = get_required_epp_for_stream(db, stream)
     ai_settings = db.get(AISettings, 1)
     if not ai_settings:
         ai_settings = AISettings()
@@ -46,9 +59,7 @@ def run_analysis(db: Session, capture: Capture, image_bytes: bytes) -> Analysis:
         db.commit()
         db.refresh(ai_settings)
 
-    profile_id = device.profile_assignment.profile_id if device.profile_assignment else None
-    if not profile_id:
-        profile_id = ensure_default_profile(db).id
+    profile_id = get_stream_profile_id(db, stream)
 
     prompt = PromptBuilder.build(required, ai_settings.active_provider)
     provider = get_ai_provider(ai_settings)

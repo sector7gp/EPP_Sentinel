@@ -35,8 +35,25 @@ export const api = {
     }),
 
   devices: () => request<Device[]>("/devices"),
-  createDevice: (name: string) =>
-    request<Device>("/devices", { method: "POST", body: JSON.stringify({ name }) }),
+  createDevice: (data: { name: string; location?: string }) =>
+    request<Device>("/devices", { method: "POST", body: JSON.stringify(data) }),
+  updateDevice: (id: string, data: { name?: string; location?: string }) =>
+    request<Device>(`/devices/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteDevice: (id: string) => request(`/devices/${id}`, { method: "DELETE" }),
+
+  streams: (deviceId: string) => request<VideoStream[]>(`/devices/${deviceId}/streams`),
+  createStream: (deviceId: string, data: StreamInput) =>
+    request<VideoStream>(`/devices/${deviceId}/streams`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateStream: (deviceId: string, streamId: string, data: Partial<StreamInput>) =>
+    request<VideoStream>(`/devices/${deviceId}/streams/${streamId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteStream: (deviceId: string, streamId: string) =>
+    request(`/devices/${deviceId}/streams/${streamId}`, { method: "DELETE" }),
 
   updateSchedule: (deviceId: string, data: Schedule) =>
     request<Schedule>(`/devices/${deviceId}/schedule`, {
@@ -50,12 +67,6 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  assignProfile: (deviceId: string, profileId: string) =>
-    request(`/devices/${deviceId}/profile`, {
-      method: "PUT",
-      body: JSON.stringify({ profile_id: profileId }),
-    }),
-
   profiles: () => request<Profile[]>("/profiles"),
   createProfile: (data: { name: string; description?: string; required_epp: string[] }) =>
     request<Profile>("/profiles", { method: "POST", body: JSON.stringify(data) }),
@@ -66,6 +77,8 @@ export const api = {
   aiSettings: () => request<AISettings>("/ai-settings"),
   updateAiSettings: (data: Partial<AISettingsUpdate>) =>
     request<AISettings>("/ai-settings", { method: "PUT", body: JSON.stringify(data) }),
+
+  dashboardStreams: () => request<StreamDashboardItem[]>("/analyses/dashboard/streams"),
 
   analyses: (params: URLSearchParams) =>
     request<AnalysisList>(`/analyses?${params}`),
@@ -84,8 +97,36 @@ export const api = {
 export type Device = {
   id: string;
   name: string;
+  location: string | null;
   api_token: string;
   last_seen_at: string | null;
+  online: boolean;
+  stream_count: number;
+};
+
+export type StreamConnectionConfig = {
+  device?: string;
+  url?: string;
+};
+
+export type StreamInput = {
+  name: string;
+  source_type: "usb" | "rtsp";
+  connection_config: StreamConnectionConfig;
+  profile_id: string;
+  enabled: boolean;
+};
+
+export type VideoStream = {
+  id: string;
+  device_id: string;
+  name: string;
+  enabled: boolean;
+  source_type: "usb" | "rtsp";
+  connection_config: StreamConnectionConfig;
+  profile_id: string;
+  profile_name: string | null;
+  required_epp: string[];
 };
 
 export type Schedule = {
@@ -133,6 +174,8 @@ export type Analysis = {
   capture_id: string;
   device_id: string;
   device_name: string;
+  stream_id: string | null;
+  stream_name: string | null;
   image_url: string;
   captured_at: string;
   analyzed_at: string;
@@ -140,7 +183,21 @@ export type Analysis = {
   cumple_normativa: boolean;
   observaciones: string | null;
   epp_results: Record<string, boolean>;
+  required_epp: string[];
   status: string;
+};
+
+export type StreamDashboardItem = {
+  stream_id: string;
+  stream_name: string;
+  device_id: string;
+  device_name: string;
+  device_location: string | null;
+  device_online: boolean;
+  profile_id: string;
+  profile_name: string;
+  required_epp: string[];
+  latest_analysis: Analysis | null;
 };
 
 export type AnalysisList = {
@@ -174,3 +231,7 @@ export const EPP_TYPES = [
   { id: "proteccion_respiratoria", label: "Protección respiratoria" },
   { id: "chaleco_reflectivo", label: "Chaleco reflectivo" },
 ];
+
+export function eppLabel(id: string): string {
+  return EPP_TYPES.find((e) => e.id === id)?.label ?? id.replace(/_/g, " ");
+}

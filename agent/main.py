@@ -23,8 +23,15 @@ logger = logging.getLogger("epp-agent")
 PENDING_DIR = Path(__file__).parent / "pending"
 
 
+def resolve_stream_source(stream: dict) -> str:
+    cfg = stream.get("connection_config") or {}
+    if stream.get("source_type") == "rtsp":
+        return cfg.get("url", "")
+    return cfg.get("device", "/dev/video0")
+
+
 def process_queue(queue: UploadQueue, uploader: Uploader) -> None:
-    for item_id, file_path, retries in queue.pending_items():
+    for item_id, file_path, retries, stream_id in queue.pending_items():
         path = Path(file_path)
         if not path.exists():
             queue.mark_acked(item_id)
@@ -33,10 +40,10 @@ def process_queue(queue: UploadQueue, uploader: Uploader) -> None:
             time.sleep(retry_delay(retries))
         queue.mark_uploading(item_id)
         try:
-            if uploader.upload(path):
+            if uploader.upload(path, stream_id=stream_id):
                 queue.mark_acked(item_id)
                 path.unlink(missing_ok=True)
-                logger.info("Subida exitosa: %s", path.name)
+                logger.info("Subida exitosa: %s (stream %s)", path.name, stream_id or "-")
             else:
                 queue.mark_failed(item_id, retries)
         except Exception as exc:
@@ -56,7 +63,7 @@ def run_loop(mock_camera: bool = False) -> None:
     remote_config: dict | None = None
     config_version = ""
     last_config_fetch = 0.0
-    last_capture = 0.0
+    last_capture: dict[str, float] = {}
 
     logger.info("Agente iniciado para dispositivo %s", config.device_id)
 
@@ -73,12 +80,47 @@ def run_loop(mock_camera: bool = False) -> None:
 
         process_queue(queue, uploader)
 
-        if remote_config and is_within_schedule(remote_config):
+        streams = remote_config.get("streams", []) if remote_config else []
+        if not streams and config.camera_source and remote_config:
+            logger.warning(
+                "Sin streams configurados; usando CAMERA_SOURCE legacy (%s)",
+                config.camera_source,
+            )
+            streams = [
+                {
+                    "id": "legacy",
+                    "enabled": True,
+                    "source_type": "rtsp"
+                    if config.camera_source.startswith(("rtsp://", "rtsps://"))
+                    else "usb",
+                    "connection_config": {
+                        "url": config.camera_source
+                        if config.camera_source.startswith(("rtsp://", "rtsps://"))
+                        else None,
+                        "device": config.camera_source
+                        if config.camera_source.startswith("/dev/")
+                        else "/dev/video0",
+                    },
+                }
+            ]
+
+        if remote_config and is_within_schedule(remote_config) and streams:
             interval = interval_seconds(remote_config)
-            if now - last_capture >= interval:
-                img_cfg = remote_config.get("image_settings", {})
+            img_cfg = remote_config.get("image_settings", {})
+            for stream in streams:
+                if not stream.get("enabled", True):
+                    continue
+                stream_id = stream.get("id", "")
+                stream_key = stream_id or "default"
+                last = last_capture.get(stream_key, 0.0)
+                if now - last < interval:
+                    continue
+                source = resolve_stream_source(stream)
+                if not source:
+                    logger.warning("Stream %s sin fuente configurada", stream.get("name", stream_id))
+                    continue
                 ts = int(time.time())
-                dest = PENDING_DIR / f"capture_{ts}.jpg"
+                dest = PENDING_DIR / f"capture_{stream_key}_{ts}.jpg"
                 try:
                     capture_image(
                         dest,
@@ -87,16 +129,24 @@ def run_loop(mock_camera: bool = False) -> None:
                         jpeg_quality=int(img_cfg.get("jpeg_quality", 75)),
                         max_kb=int(img_cfg.get("max_kb", 500)),
                         mock=mock_camera,
-                        source=config.camera_source,
+                        source=source,
                     )
-                    queue.enqueue(str(dest))
-                    last_capture = now
-                    logger.info("Captura encolada: %s", dest.name)
+                    sid = None if stream_id == "legacy" else stream_id
+                    queue.enqueue(str(dest), stream_id=sid)
+                    last_capture[stream_key] = now
+                    logger.info(
+                        "Captura encolada: %s (stream %s)",
+                        dest.name,
+                        stream.get("name", stream_id),
+                    )
                 except Exception as exc:
-                    logger.error("Fallo de captura: %s", exc)
-        else:
-            if not remote_config:
-                logger.debug("Sin configuración remota; reintentando...")
+                    logger.error(
+                        "Fallo de captura stream %s: %s",
+                        stream.get("name", stream_id),
+                        exc,
+                    )
+        elif not remote_config:
+            logger.debug("Sin configuración remota; reintentando...")
 
         time.sleep(2)
 
@@ -105,9 +155,10 @@ def test_camera(mock: bool) -> None:
     config = load_config(mock_camera=mock)
     dest = PENDING_DIR / "test.jpg"
     PENDING_DIR.mkdir(parents=True, exist_ok=True)
+    source = config.camera_source or "/dev/video0"
     if config.camera_source and not mock:
-        logger.info("Usando fuente RTSP: %s", config.camera_source)
-    capture_image(dest, 640, 480, 75, 500, mock=mock, source=config.camera_source)
+        logger.info("Usando fuente: %s", config.camera_source)
+    capture_image(dest, 640, 480, 75, 500, mock=mock, source=source)
     logger.info("Imagen de prueba guardada en %s (%s bytes)", dest, dest.stat().st_size)
 
 
@@ -120,7 +171,7 @@ def diagnose(mock_camera: bool = False) -> None:
     print(f"  BACKEND_URL   = {config.backend_url or '(vacío)'}")
     print(f"  DEVICE_ID     = {config.device_id or '(vacío)'}")
     print(f"  DEVICE_TOKEN  = {masked}")
-    print(f"  CAMERA_SOURCE = {config.camera_source or '(webcam local)'}")
+    print(f"  CAMERA_SOURCE = {config.camera_source or '(streams remotos / webcam default)'}")
     print(f"  QUEUE_DB      = {config.queue_db}")
 
     if "localhost" in config.backend_url or "127.0.0.1" in config.backend_url:
@@ -136,6 +187,17 @@ def diagnose(mock_camera: bool = False) -> None:
     conn_ok, message = uploader.check_connection()
     print(f"  {'✅' if conn_ok else '❌'} {message}")
     ok = ok and conn_ok
+
+    remote = uploader.fetch_config()
+    if remote:
+        streams = remote.get("streams", [])
+        print(f"\n=== Streams remotos ({len(streams)}) ===")
+        for s in streams:
+            status = "activo" if s.get("enabled") else "inactivo"
+            print(f"  - {s.get('name')} [{s.get('source_type')}] ({status})")
+    else:
+        print("\n=== Streams remotos ===")
+        print("  (no se pudo obtener configuración)")
 
     print("\n=== Cola de subidas ===")
     queue = UploadQueue(config.queue_db)

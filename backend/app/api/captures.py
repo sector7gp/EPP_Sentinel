@@ -1,15 +1,19 @@
+from __future__ import annotations
+
+import json
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.constants import AuditEventType
 from app.database import get_db
-from app.models import Capture
+from app.models import Capture, VideoStream
 from app.schemas.schemas import CaptureUploadResponse
 from app.services.analysis_service import run_analysis, save_capture_image
 from app.services.audit import log_event
 from app.services.device_service import touch_device
+from app.services.stream_service import get_stream_or_404
 from app.utils.auth import get_device_by_token
 
 router = APIRouter(tags=["captures"])
@@ -18,11 +22,18 @@ router = APIRouter(tags=["captures"])
 @router.post("/captures", response_model=CaptureUploadResponse)
 async def upload_capture(
     file: UploadFile = File(...),
+    stream_id: str | None = Form(default=None),
     db: Session = Depends(get_db),
     x_device_token: str = Header(..., alias="X-Device-Token"),
 ):
     device = get_device_by_token(db, x_device_token)
     touch_device(db, device)
+
+    stream = None
+    if stream_id:
+        stream = get_stream_or_404(db, device.id, stream_id)
+        if not stream.enabled:
+            raise HTTPException(status_code=400, detail="Stream deshabilitado")
 
     if not file.content_type or not file.content_type.startswith("image/"):
         log_event(
@@ -40,6 +51,7 @@ async def upload_capture(
 
     capture = Capture(
         device_id=device.id,
+        stream_id=stream.id if stream else None,
         image_path="pending",
         captured_at=datetime.utcnow(),
         upload_status="received",
@@ -58,7 +70,11 @@ async def upload_capture(
         AuditEventType.UPLOAD_SUCCESS.value,
         f"Captura recibida {capture.id}",
         device_id=device.id,
-        payload={"capture_id": capture.id, "size_kb": capture.file_size_kb},
+        payload={
+            "capture_id": capture.id,
+            "stream_id": stream.id if stream else None,
+            "size_kb": capture.file_size_kb,
+        },
     )
 
     analysis = run_analysis(db, capture, content)

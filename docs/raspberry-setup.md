@@ -18,7 +18,7 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install -y python3-venv python3-pip fswebcam ffmpeg
 ```
 
-> `ffmpeg` solo es necesario si se usa una cámara IP/RTSP (ver `CAMERA_SOURCE`).
+> `ffmpeg` solo es necesario si algún stream configurado en el panel usa RTSP.
 
 Dependencias de runtime para Pillow (procesamiento de imágenes):
 
@@ -48,7 +48,7 @@ cp .env.example .env
 
 1. Iniciar el backend y el panel web.
 2. Iniciar sesión como administrador.
-3. En **Configuración → Dispositivos**, crear un dispositivo y copiar:
+3. En **Configuración → Nodos Raspberry Pi**, crear un nodo y copiar:
    - `DEVICE_ID` (UUID)
    - `DEVICE_TOKEN`
 
@@ -61,21 +61,34 @@ DEVICE_TOKEN=<token>
 CONFIG_POLL_SECONDS=300
 ```
 
-## Fuente de cámara
+## Fuentes de video (streams)
 
-Por defecto el agente captura desde una webcam USB local (`fswebcam`, con
-`libcamera-still` como respaldo). Para usar una **cámara IP/RTSP**, indicar la
-URL completa en `CAMERA_SOURCE` (requiere `ffmpeg`):
+Cada Raspberry Pi puede gestionar hasta **4 streams** simultáneos. La configuración se define en el panel (**Configuración → Streams**), no en el `.env` del agente. El agente consulta la config remota periódicamente y captura cada stream activo dentro del horario configurado.
+
+| Tipo | Parámetro en el panel | Requisito en la Pi |
+|------|----------------------|-------------------|
+| **USB** | Dispositivo, ej. `/dev/video0` | `fswebcam` (o `libcamera-still`) |
+| **RTSP** | URL completa `rtsp://...` | `ffmpeg` |
+
+Ejemplos de configuración en el panel:
+
+- USB: dispositivo `/dev/video0`, `/dev/video1`, etc.
+- RTSP: `rtsp://admin:Password@10.10.7.129:554`
+
+Cada stream tiene un **perfil EPP** propio. Varios streams pueden compartir el mismo perfil. Cambiar perfil o parámetros no requiere reiniciar el agente.
+
+> `ffmpeg` es necesario solo si algún stream del nodo usa RTSP.
+
+### Legacy: `CAMERA_SOURCE` en `.env`
+
+Si el backend no devuelve streams configurados, el agente puede usar `CAMERA_SOURCE` como respaldo temporal (una sola fuente). Se recomienda configurar streams desde el panel.
 
 ```
+# Solo fallback; preferir configuración remota
 CAMERA_SOURCE=rtsp://admin:Password@10.10.7.129:554
 ```
 
-El agente extrae un fotograma del stream con `ffmpeg` (transporte TCP) en cada
-captura, lo escala a la resolución configurada y lo comprime como JPEG. Si
-`CAMERA_SOURCE` queda vacío, se usa la webcam local.
-
-Probar el stream manualmente:
+Probar un stream RTSP manualmente:
 
 ```bash
 ffmpeg -rtsp_transport tcp -i "rtsp://admin:Password@10.10.7.129:554" -frames:v 1 prueba.jpg
@@ -117,8 +130,10 @@ Interpretación de la cola:
 - **pendientes / fallidas** altas y subiendo → el agente captura pero **no logra
   subir** (revisa `BACKEND_URL`, red, certificado TLS).
 - **confirmadas** creciendo → las imágenes **sí llegan** al backend.
-- **cola vacía** → aún no se ha capturado (revisa el horario `schedule` en el
-  panel y que esté dentro de la franja activa).
+- **cola vacía** → aún no se ha capturado (revisa el horario en el panel, que
+  haya streams activos y que esté dentro de la franja horaria).
+
+El diagnóstico también lista los **streams remotos** configurados para el nodo.
 
 Errores comunes que reporta:
 

@@ -1,6 +1,6 @@
 # EPP Sentinel
 
-Sistema autónomo de detección de Elementos de Protección Personal (EPP) con Raspberry Pi, backend central y panel de administración.
+**Versión 1.1.0** — Sistema autónomo de detección de Elementos de Protección Personal (EPP) con Raspberry Pi, backend central y panel de administración.
 
 ## Arquitectura
 
@@ -80,9 +80,16 @@ docker compose up --build
 
 ## Documentación
 
+- [Changelog](CHANGELOG.md)
 - [Configuración Raspberry Pi](docs/raspberry-setup.md)
 - [API REST](docs/api.md)
 - Requisitos funcionales: [PromptInicial.md](PromptInicial.md)
+
+### Novedades v1.1.0
+
+- Hasta 4 streams USB/RTSP por nodo Raspberry Pi, cada uno con perfil EPP propio.
+- Dashboard en vivo con modal de ampliación y EPP según perfil del stream.
+- Tras actualizar: `cd backend && alembic upgrade head` (o reiniciar el backend; aplica migraciones al arrancar).
 
 ## Proveedores IA
 

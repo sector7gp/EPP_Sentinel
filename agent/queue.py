@@ -19,6 +19,7 @@ class UploadQueue:
                 CREATE TABLE IF NOT EXISTS queue (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     file_path TEXT NOT NULL,
+                    stream_id TEXT,
                     status TEXT NOT NULL DEFAULT 'pending',
                     retries INTEGER NOT NULL DEFAULT 0,
                     created_at REAL NOT NULL,
@@ -26,27 +27,30 @@ class UploadQueue:
                 )
                 """
             )
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(queue)").fetchall()}
+            if "stream_id" not in cols:
+                conn.execute("ALTER TABLE queue ADD COLUMN stream_id TEXT")
 
-    def enqueue(self, file_path: str) -> int:
+    def enqueue(self, file_path: str, stream_id: str | None = None) -> int:
         with self._conn() as conn:
             cur = conn.execute(
-                "INSERT INTO queue (file_path, status, created_at) VALUES (?, 'pending', ?)",
-                (file_path, time.time()),
+                "INSERT INTO queue (file_path, stream_id, status, created_at) VALUES (?, ?, 'pending', ?)",
+                (file_path, stream_id, time.time()),
             )
             return int(cur.lastrowid)
 
-    def pending_items(self, limit: int = 10) -> list[tuple[int, str, int]]:
+    def pending_items(self, limit: int = 10) -> list[tuple[int, str, int, str | None]]:
         with self._conn() as conn:
             rows = conn.execute(
                 """
-                SELECT id, file_path, retries FROM queue
+                SELECT id, file_path, retries, stream_id FROM queue
                 WHERE status IN ('pending', 'failed')
                 ORDER BY created_at ASC
                 LIMIT ?
                 """,
                 (limit,),
             ).fetchall()
-        return [(r[0], r[1], r[2]) for r in rows]
+        return [(r[0], r[1], r[2], r[3]) for r in rows]
 
     def mark_uploading(self, item_id: int) -> None:
         with self._conn() as conn:

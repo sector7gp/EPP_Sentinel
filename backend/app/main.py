@@ -6,15 +6,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
-from app.database import Base, SessionLocal, engine
+from app.database import SessionLocal
+from app.migrations import run_migrations
 from app.api import auth, devices, captures, profiles, ai_settings, analyses, audit_logs
 from app.models import AISettings
-from app.services.device_service import ensure_default_profile
+from app.services.profile_service import ensure_default_profile
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    run_migrations()
     settings = get_settings()
     Path(settings.storage_path).mkdir(parents=True, exist_ok=True)
     db = SessionLocal()
@@ -30,7 +31,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="EPP Sentinel API",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
 

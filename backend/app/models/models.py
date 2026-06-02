@@ -26,6 +26,7 @@ class Device(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
+    location: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     api_token: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -35,7 +36,27 @@ class Device(Base):
     profile_assignment: Mapped[Optional["DeviceProfileAssignment"]] = relationship(
         back_populates="device", uselist=False
     )
+    streams: Mapped[List["VideoStream"]] = relationship(
+        back_populates="device", cascade="all, delete-orphan", order_by="VideoStream.created_at"
+    )
     captures: Mapped[List["Capture"]] = relationship(back_populates="device")
+
+
+class VideoStream(Base):
+    __tablename__ = "video_streams"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    device_id: Mapped[str] = mapped_column(String(36), ForeignKey("devices.id"), index=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    connection_config: Mapped[str] = mapped_column(Text, default="{}")
+    profile_id: Mapped[str] = mapped_column(String(36), ForeignKey("operator_profiles.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    device: Mapped["Device"] = relationship(back_populates="streams")
+    profile: Mapped["OperatorProfile"] = relationship(back_populates="streams")
+    captures: Mapped[List["Capture"]] = relationship(back_populates="stream")
 
 
 class CaptureSchedule(Base):
@@ -77,6 +98,7 @@ class OperatorProfile(Base):
         back_populates="profile", cascade="all, delete-orphan"
     )
     assignments: Mapped[List["DeviceProfileAssignment"]] = relationship(back_populates="profile")
+    streams: Mapped[List["VideoStream"]] = relationship(back_populates="profile")
 
 
 class ProfileEPPRequirement(Base):
@@ -118,12 +140,14 @@ class Capture(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     device_id: Mapped[str] = mapped_column(String(36), ForeignKey("devices.id"), index=True)
+    stream_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("video_streams.id"), index=True)
     image_path: Mapped[str] = mapped_column(String(512), nullable=False)
     captured_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     upload_status: Mapped[str] = mapped_column(String(32), default="received")
     file_size_kb: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     device: Mapped["Device"] = relationship(back_populates="captures")
+    stream: Mapped[Optional["VideoStream"]] = relationship(back_populates="captures")
     analysis: Mapped[Optional["Analysis"]] = relationship(back_populates="capture", uselist=False)
 
 

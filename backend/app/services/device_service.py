@@ -1,20 +1,25 @@
+from __future__ import annotations
+
 import secrets
 from datetime import datetime, time
 
 from sqlalchemy.orm import Session
 
 from app.models import (
+    Analysis,
+    AuditLog,
+    Capture,
     CaptureSchedule,
     Device,
     DeviceProfileAssignment,
     ImageSettings,
-    OperatorProfile,
-    ProfileEPPRequirement,
+    VideoStream,
 )
+from app.services.stream_service import create_default_stream
 
 
-def create_device(db: Session, name: str) -> Device:
-    device = Device(name=name, api_token=secrets.token_urlsafe(32))
+def create_device(db: Session, name: str, location: str | None = None) -> Device:
+    device = Device(name=name, location=location, api_token=secrets.token_urlsafe(32))
     db.add(device)
     db.flush()
     db.add(
@@ -38,7 +43,54 @@ def create_device(db: Session, name: str) -> Device:
     )
     db.commit()
     db.refresh(device)
+    create_default_stream(db, device)
     return device
+
+
+def update_device(db: Session, device: Device, *, name: str | None = None, location: str | None = None) -> Device:
+    if name is not None:
+        if not name.strip():
+            raise ValueError("El nombre es obligatorio")
+        device.name = name.strip()
+    if location is not None:
+        device.location = location.strip() or None
+    db.commit()
+    db.refresh(device)
+    return device
+
+
+def delete_device(db: Session, device: Device) -> None:
+    device_id = device.id
+    db.expire(device)
+
+    capture_ids = [
+        row[0]
+        for row in db.query(Capture.id).filter(Capture.device_id == device_id).all()
+    ]
+    if capture_ids:
+        db.query(Analysis).filter(Analysis.capture_id.in_(capture_ids)).delete(
+            synchronize_session=False
+        )
+    db.query(Capture).filter(Capture.device_id == device_id).delete(synchronize_session=False)
+    db.query(VideoStream).filter(VideoStream.device_id == device_id).delete(synchronize_session=False)
+    db.query(DeviceProfileAssignment).filter(DeviceProfileAssignment.device_id == device_id).delete(
+        synchronize_session=False
+    )
+    db.query(CaptureSchedule).filter(CaptureSchedule.device_id == device_id).delete(synchronize_session=False)
+    db.query(ImageSettings).filter(ImageSettings.device_id == device_id).delete(synchronize_session=False)
+    db.query(AuditLog).filter(AuditLog.device_id == device_id).update(
+        {AuditLog.device_id: None},
+        synchronize_session=False,
+    )
+    db.query(Device).filter(Device.id == device_id).delete(synchronize_session=False)
+    db.commit()
+
+
+def device_is_online(device: Device, threshold_seconds: int = 300) -> bool:
+    if not device.last_seen_at:
+        return False
+    delta = datetime.utcnow() - device.last_seen_at
+    return delta.total_seconds() <= threshold_seconds
 
 
 def touch_device(db: Session, device: Device) -> None:
@@ -54,26 +106,12 @@ def get_device_config_version(device: Device) -> str:
     if device.image_settings:
         i = device.image_settings
         parts.append(f"i{i.width}x{i.height}-q{i.jpeg_quality}-m{i.max_kb}")
-    if device.profile_assignment:
-        parts.append(f"p{device.profile_assignment.profile_id}")
+    for stream in sorted(device.streams or [], key=lambda x: x.id):
+        cfg = stream.connection_config
+        parts.append(
+            f"st{stream.id}-{stream.enabled}-{stream.source_type}-{stream.profile_id}-{cfg}"
+        )
     return "-".join(parts) or "default"
-
-
-def ensure_default_profile(db: Session) -> OperatorProfile:
-    profile = db.query(OperatorProfile).filter(OperatorProfile.name == "Operario de Planta").first()
-    if profile:
-        return profile
-    profile = OperatorProfile(
-        name="Operario de Planta",
-        description="Perfil por defecto con EPP básicos de planta",
-    )
-    db.add(profile)
-    db.flush()
-    for epp in ("casco_seguridad", "chaleco_reflectivo", "calzado_seguridad", "guantes_seguridad"):
-        db.add(ProfileEPPRequirement(profile_id=profile.id, epp_type=epp))
-    db.commit()
-    db.refresh(profile)
-    return profile
 
 
 def assign_profile_to_device(db: Session, device_id: str, profile_id: str) -> DeviceProfileAssignment:

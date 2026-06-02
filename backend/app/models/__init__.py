@@ -9,6 +9,7 @@ from app.models.models import (
     ImageSettings,
     OperatorProfile,
     ProfileEPPRequirement,
+    VideoStream,
 )
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "OperatorProfile",
     "ProfileEPPRequirement",
     "DeviceProfileAssignment",
+    "VideoStream",
     "AISettings",
     "Capture",
     "Analysis",
