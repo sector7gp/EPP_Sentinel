@@ -547,29 +547,37 @@ export default function ConfigPage() {
 
             <div>
               <h2>Calidad de imagen</h2>
-              <label>Ancho</label>
+              <label>Ancho (320-2592)</label>
               <input
                 type="number"
+                min={320}
+                max={2592}
                 value={image.width}
                 onChange={(e) => setImage((i) => ({ ...i, width: Number(e.target.value) }))}
               />
-              <label>Alto</label>
+              <label>Alto (240-1944)</label>
               <input
                 type="number"
+                min={240}
+                max={1944}
                 value={image.height}
                 onChange={(e) => setImage((i) => ({ ...i, height: Number(e.target.value) }))}
               />
-              <label>Calidad JPEG</label>
+              <label>Calidad JPEG (30-100)</label>
               <input
                 type="number"
+                min={30}
+                max={100}
                 value={image.jpeg_quality}
                 onChange={(e) =>
                   setImage((i) => ({ ...i, jpeg_quality: Number(e.target.value) }))
                 }
               />
-              <label>Máx. KB</label>
+              <label>Máx. KB (50-5000)</label>
               <input
                 type="number"
+                min={50}
+                max={5000}
                 value={image.max_kb}
                 onChange={(e) => setImage((i) => ({ ...i, max_kb: Number(e.target.value) }))}
               />

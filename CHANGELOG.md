@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.2] — 2026-08-01
+
+### Correcciones
+
+- **Backend**: el schema `ImageSettingsUpdate` seguía limitando `width`/`height` a 1920x1080 pese a que el firmware ya soporta hasta 2592x1944 (QXGA/QSXGA), causando `422 Unprocessable Content` al guardar resoluciones altas desde el panel. Límites actualizados a `le=2592`/`le=1944`.
+- **Panel**: el formulario "Calidad de imagen" no validaba rangos ni mostraba el motivo del error; ahora los inputs tienen `min`/`max` visibles junto al label.
+- **Cliente API**: los errores de validación (422) de FastAPI llegan como lista de objetos (`detail: [{msg, loc, type}]`) y se mostraban como `[object Object]`; ahora se concatenan los mensajes legibles.
+
 ## [1.2.1] — 2026-07-31
 
 ### Correcciones
