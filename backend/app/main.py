@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="EPP Sentinel API",
-    version="1.2.2",
+    version="1.2.3",
     lifespan=lifespan,
 )
 

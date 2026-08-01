@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.3] — 2026-08-01
+
+### Correcciones
+
+- **Firmware ESP32-S3-ETH**: `camera_init()` reservaba el buffer DMA/JPEG al tamaño de `FRAMESIZE_XGA` (1024x768) sin importar la resolución pedida luego con `sensor->set_framesize()`; capturar a QXGA (2048x1536) o QSXGA (2592x1944) desbordaba ese buffer y `esp_camera_fb_get()` fallaba. Ahora se inicializa con `FRAMESIZE_QSXGA` (el máximo del OV5640) para que el buffer alcance para cualquier resolución configurada. Requiere recompilar y reflashear la placa (`idf.py build && idf.py -p <puerto> flash`).
+
 ## [1.2.2] — 2026-08-01
 
 ### Correcciones
