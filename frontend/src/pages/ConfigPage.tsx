@@ -61,9 +61,25 @@ export default function ConfigPage() {
     enabled: !!deviceId,
   });
 
+  const { data: deviceConfig } = useQuery({
+    queryKey: ["device-config", deviceId],
+    queryFn: () => api.deviceConfig(deviceId),
+    enabled: !!deviceId,
+  });
+
+  const [scheduleMessage, setScheduleMessage] = useState("");
+  const [imageMessage, setImageMessage] = useState("");
+
   useEffect(() => {
     if (devices?.length && !deviceId) setDeviceId(devices[0].id);
   }, [devices, deviceId]);
+
+  useEffect(() => {
+    if (deviceConfig) {
+      setSchedule(deviceConfig.schedule);
+      setImage(deviceConfig.image_settings);
+    }
+  }, [deviceConfig]);
 
   useEffect(() => {
     const d = devices?.find((x) => x.id === deviceId);
@@ -88,11 +104,24 @@ export default function ConfigPage() {
 
   const saveSchedule = useMutation({
     mutationFn: () => api.updateSchedule(deviceId, schedule),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["devices"] });
+      qc.invalidateQueries({ queryKey: ["device-config", deviceId] });
+      setScheduleMessage("Horario guardado correctamente.");
+      setTimeout(() => setScheduleMessage(""), 3000);
+    },
+    onError: (e: Error) => setError(e.message),
   });
 
   const saveImage = useMutation({
     mutationFn: () => api.updateImageSettings(deviceId, image),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["devices"] });
+      qc.invalidateQueries({ queryKey: ["device-config", deviceId] });
+      setImageMessage("Configuración de imagen guardada correctamente.");
+      setTimeout(() => setImageMessage(""), 3000);
+    },
+    onError: (e: Error) => setError(e.message),
   });
 
   const createDevice = useMutation({
@@ -513,6 +542,7 @@ export default function ConfigPage() {
               <button type="button" onClick={() => saveSchedule.mutate()}>
                 Guardar horario
               </button>
+              {scheduleMessage && <p className="success">{scheduleMessage}</p>}
             </div>
 
             <div>
@@ -546,6 +576,7 @@ export default function ConfigPage() {
               <button type="button" onClick={() => saveImage.mutate()}>
                 Guardar imagen
               </button>
+              {imageMessage && <p className="success">{imageMessage}</p>}
             </div>
           </div>
         </>

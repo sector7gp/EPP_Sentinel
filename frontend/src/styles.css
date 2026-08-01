@@ -182,6 +182,11 @@ td {
   font-size: 0.875rem;
 }
 
+.success {
+  color: #15803d;
+  font-size: 0.875rem;
+}
+
 .checkbox-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

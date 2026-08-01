@@ -55,6 +55,8 @@ export const api = {
   deleteStream: (deviceId: string, streamId: string) =>
     request(`/devices/${deviceId}/streams/${streamId}`, { method: "DELETE" }),
 
+  deviceConfig: (deviceId: string) => request<DeviceConfig>(`/devices/${deviceId}/config`),
+
   updateSchedule: (deviceId: string, data: Schedule) =>
     request<Schedule>(`/devices/${deviceId}/schedule`, {
       method: "PUT",
@@ -144,6 +146,13 @@ export type ImageSettings = {
   height: number;
   jpeg_quality: number;
   max_kb: number;
+};
+
+export type DeviceConfig = {
+  device_id: string;
+  schedule: Schedule;
+  image_settings: ImageSettings;
+  config_version: string;
 };
 
 export type Profile = {

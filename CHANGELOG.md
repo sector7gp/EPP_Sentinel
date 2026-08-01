@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1] — 2026-07-31
+
+### Correcciones
+
+- **Firmware ESP32-S3-ETH**: la resolución máxima de captura estaba limitada a UXGA (1600x1200) sin importar lo configurado en el panel; ahora soporta QXGA y QSXGA (hasta 2592x1944, máximo del OV5640).
+- **Panel de configuración**: "Horario de captura" y "Calidad de imagen" mostraban siempre los valores por defecto en lugar de los últimos guardados para el dispositivo, y "Guardar imagen" no mostraba confirmación ni errores. Ahora ambos formularios cargan la configuración real del dispositivo (`GET /devices/{id}/config`) y muestran un mensaje de confirmación al guardar.
+
 ## [1.2.0] — 2026-07-31
 
 ### Nuevo

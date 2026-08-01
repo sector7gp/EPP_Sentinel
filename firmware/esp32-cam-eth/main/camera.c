@@ -11,6 +11,8 @@ static camera_fb_t *s_last_fb = NULL;
 static framesize_t framesize_for(int width, int height)
 {
     (void)height;
+    if (width >= 2592) return FRAMESIZE_QSXGA; // 2592x1944 (máximo OV5640)
+    if (width >= 2048) return FRAMESIZE_QXGA;  // 2048x1536
     if (width >= 1600) return FRAMESIZE_UXGA;  // 1600x1200
     if (width >= 1280) return FRAMESIZE_HD;    // 1280x720
     if (width >= 1024) return FRAMESIZE_XGA;   // 1024x768

@@ -1,6 +1,6 @@
 # EPP Sentinel
 
-**Versión 1.2.0** — Sistema autónomo de detección de Elementos de Protección Personal (EPP) con Raspberry Pi, backend central y panel de administración.
+**Versión 1.2.1** — Sistema autónomo de detección de Elementos de Protección Personal (EPP) con Raspberry Pi, backend central y panel de administración.
 
 ## Arquitectura
 
