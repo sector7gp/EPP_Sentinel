@@ -29,3 +29,10 @@ frontend/.env.local
 
 # Docker
 deploy/data/
+
+# ESP-IDF firmware
+firmware/esp32-cam-eth/build/
+firmware/esp32-cam-eth/managed_components/
+firmware/esp32-cam-eth/dependencies.lock
+firmware/esp32-cam-eth/sdkconfig
+firmware/esp32-cam-eth/sdkconfig.old

@@ -1,0 +1,140 @@
+menu "EPP Sentinel Camera (ESP32-S3-ETH)"
+
+    comment "Pinout confirmado contra la wiki oficial de Waveshare ESP32-S3-ETH(-CAM)."
+
+    menu "Ethernet W5500 (SPI)"
+
+        config EPP_ETH_SPI_HOST
+            int "SPI host (0=SPI2_HOST, 1=SPI3_HOST)"
+            default 1
+
+        config EPP_ETH_SPI_CLOCK_MHZ
+            int "SPI clock (MHz)"
+            default 20
+
+        config EPP_ETH_GPIO_MISO
+            int "GPIO MISO"
+            default 12
+
+        config EPP_ETH_GPIO_MOSI
+            int "GPIO MOSI"
+            default 11
+
+        config EPP_ETH_GPIO_SCLK
+            int "GPIO SCLK"
+            default 13
+
+        config EPP_ETH_GPIO_CS
+            int "GPIO CS"
+            default 14
+
+        config EPP_ETH_GPIO_INT
+            int "GPIO INT"
+            default 10
+
+        config EPP_ETH_GPIO_RST
+            int "GPIO RST (-1 si no está cableado)"
+            default 9
+
+    endmenu
+
+    menu "Cámara OV5640 (DVP)"
+
+        config EPP_CAM_XCLK_FREQ_HZ
+            int "Frecuencia XCLK (Hz)"
+            default 20000000
+
+        config EPP_CAM_GPIO_PWDN
+            int "GPIO PWDN (-1 si no está cableado)"
+            default 8
+            help
+                Llamado "CAM_ENABLE" en el demo oficial de Waveshare (no
+                aparece en la tabla de pines DVP de la wiki, solo en el código
+                de ejemplo). Activo en alto = cámara apagada; el driver
+                esp32-camera lo pone en bajo automáticamente durante
+                esp_camera_init() si está configurado aquí.
+
+        config EPP_CAM_GPIO_RESET
+            int "GPIO RESET (-1 si no está cableado)"
+            default -1
+            help
+                El módulo FPC OV2640/OV5640 de este conector no expone RESET
+                por separado; solo PWDN.
+
+        config EPP_CAM_GPIO_XCLK
+            int "GPIO XCLK"
+            default 3
+
+        config EPP_CAM_GPIO_SIOD
+            int "GPIO SIOD (I2C SDA)"
+            default 48
+
+        config EPP_CAM_GPIO_SIOC
+            int "GPIO SIOC (I2C SCL)"
+            default 47
+
+        config EPP_CAM_GPIO_VSYNC
+            int "GPIO VSYNC"
+            default 1
+
+        config EPP_CAM_GPIO_HREF
+            int "GPIO HREF"
+            default 2
+
+        config EPP_CAM_GPIO_PCLK
+            int "GPIO PCLK"
+            default 39
+
+        config EPP_CAM_GPIO_D0
+            int "GPIO Y2 (D0)"
+            default 41
+
+        config EPP_CAM_GPIO_D1
+            int "GPIO Y3 (D1)"
+            default 45
+
+        config EPP_CAM_GPIO_D2
+            int "GPIO Y4 (D2)"
+            default 46
+
+        config EPP_CAM_GPIO_D3
+            int "GPIO Y5 (D3)"
+            default 42
+
+        config EPP_CAM_GPIO_D4
+            int "GPIO Y6 (D4)"
+            default 40
+
+        config EPP_CAM_GPIO_D5
+            int "GPIO Y7 (D5)"
+            default 38
+
+        config EPP_CAM_GPIO_D6
+            int "GPIO Y8 (D6)"
+            default 15
+
+        config EPP_CAM_GPIO_D7
+            int "GPIO Y9 (D7)"
+            default 18
+
+    endmenu
+
+    menu "Provisioning y red"
+
+        config EPP_MDNS_HOSTNAME_PREFIX
+            string "Prefijo de hostname mDNS"
+            default "epp-cam"
+            help
+                El dispositivo se anuncia como <prefijo>-<sufijo-mac>.local
+
+        config EPP_NTP_SERVER
+            string "Servidor NTP"
+            default "pool.ntp.org"
+
+    endmenu
+
+    config EPP_STATUS_LED_GPIO
+        int "GPIO del LED de estado (-1 para deshabilitar)"
+        default -1
+
+endmenu

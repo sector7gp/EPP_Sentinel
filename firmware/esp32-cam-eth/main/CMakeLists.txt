@@ -1,0 +1,25 @@
+idf_component_register(
+    SRCS
+        "app_main.c"
+        "net_eth.c"
+        "time_sync.c"
+        "device_config.c"
+        "provisioning_server.c"
+        "backend_client.c"
+        "scheduler.c"
+        "camera.c"
+        "status_led.c"
+    INCLUDE_DIRS "."
+    REQUIRES
+        esp_eth
+        esp_netif
+        esp_event
+        nvs_flash
+        esp_http_server
+        esp_http_client
+        json
+        driver
+        esp_timer
+        mdns
+        esp32-camera
+)

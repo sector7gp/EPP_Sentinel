@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0] — 2026-07-31
+
+### Nuevo
+
+- **Nodo de cámara ESP32-S3-ETH**: firmware ESP-IDF (`firmware/esp32-cam-eth/`) para un nodo alternativo a la Raspberry Pi, con Ethernet W5500 y sensor OV5640, que sube capturas directamente al backend sin pasar por `agent/`.
+- **Despliegue con PM2**: guía y comandos para correr backend, frontend y agente como procesos separados de PM2 sin Docker (`deploy/pm2.md`).
+
+### Cambios
+
+- Documentado el acceso desde otros hosts de la LAN: enlazar uvicorn (`--host 0.0.0.0`) y Vite (`--host`), y ajustar el proxy de `frontend/vite.config.ts` si el backend usa un puerto distinto de 8000.
+- Documentación actualizada: `docs/esp32-firmware.md`.
+
 ## [1.1.0] — 2026-06-01
 
 ### Nuevo

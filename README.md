@@ -1,10 +1,11 @@
 # EPP Sentinel
 
-**Versión 1.1.0** — Sistema autónomo de detección de Elementos de Protección Personal (EPP) con Raspberry Pi, backend central y panel de administración.
+**Versión 1.2.0** — Sistema autónomo de detección de Elementos de Protección Personal (EPP) con Raspberry Pi, backend central y panel de administración.
 
 ## Arquitectura
 
 - **agent/** – Servicio ligero en Raspberry Pi (captura, compresión, cola, subida HTTPS)
+- **firmware/esp32-cam-eth/** – Firmware ESP-IDF para cámara remota ESP32-S3-ETH (Ethernet + OV5640), sube directamente al backend
 - **backend/** – API FastAPI, análisis IA multi-proveedor, persistencia
 - **frontend/** – Panel React de configuración y dashboard
 - **deploy/** – Docker Compose y nginx
@@ -59,6 +60,30 @@ npm run dev
 
 Panel: http://localhost:5173
 
+#### Acceder desde otro equipo
+
+Al igual que uvicorn, Vite por defecto solo escucha en `127.0.0.1`. Para
+exponer el panel a otros hosts de la red, arráncalo con `--host`:
+
+```bash
+npm run dev -- --host 0.0.0.0
+```
+
+Luego accede desde el otro equipo a `http://<IP-del-servidor>:5173`.
+
+El proxy de `/api` y `/storage` en `frontend/vite.config.ts` reenvía las
+peticiones a `http://localhost:8000` **desde la máquina donde corre Vite**
+(no desde el navegador), así que sigue funcionando sin cambios mientras
+backend y frontend-dev corran en el mismo host. Si el backend está en otra
+máquina, actualiza el target del proxy con su IP:
+
+```ts
+proxy: {
+  "/api": "http://192.168.1.50:8000",
+  "/storage": "http://192.168.1.50:8000",
+},
+```
+
 ### 3. Agente (simulado sin cámara)
 
 ```bash
@@ -82,7 +107,9 @@ docker compose up --build
 
 - [Changelog](CHANGELOG.md)
 - [Configuración Raspberry Pi](docs/raspberry-setup.md)
+- [Cámara remota ESP32-S3-ETH](docs/esp32-firmware.md)
 - [API REST](docs/api.md)
+- [Ejecutar con PM2 (sin Docker)](deploy/pm2.md)
 - Requisitos funcionales: [PromptInicial.md](PromptInicial.md)
 
 ### Novedades v1.1.0
