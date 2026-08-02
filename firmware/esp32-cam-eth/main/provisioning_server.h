@@ -8,9 +8,16 @@
  * Debe llamarse una vez que net_eth_start() obtuvo IP.
  *
  * Rutas:
- *   GET  /        formulario de alta si no está provisionado, landing si sí
- *   POST /save    guarda backend_url/device_id/device_token en NVS y reinicia
- *   GET  /status  página de solo lectura con el estado operativo
+ *   GET  /         formulario de alta si no está provisionado, landing si sí
+ *   POST /save     guarda backend_url/device_id/device_token en NVS y reinicia
+ *   GET  /status   página de solo lectura con el estado operativo
+ *   GET  /capture  snapshot JPEG único (?resolution=WxH&quality=&max_kb=)
+ *   GET  /monitor  vista con auto-refresh sobre /capture
+ *   GET  /settings formulario para elegir los parámetros de /monitor
+ *                  (no persiste: la config real de captura la manda el backend)
+ *   GET  /ota      formulario para subir un firmware .bin nuevo
+ *   POST /ota      recibe el .bin y escribe la partición OTA; requiere
+ *                  Authorization: Basic base64(":" + device_token)
  */
 esp_err_t provisioning_server_start(void);
 

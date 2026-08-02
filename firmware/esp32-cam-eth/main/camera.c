@@ -3,16 +3,28 @@
 #include "driver/ledc.h"
 #include "esp_camera.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "sdkconfig.h"
 
 static const char *TAG = "camera";
 static camera_fb_t *s_last_fb = NULL;
+static SemaphoreHandle_t s_capture_mutex;
+// Última resolución aplicada al sensor; arranca en FRAMESIZE_INVALID para
+// forzar el descarte del primer frame también en la primerísima captura.
+static framesize_t s_current_framesize = FRAMESIZE_INVALID;
 
 static framesize_t framesize_for(int width, int height)
 {
     (void)height;
-    if (width >= 2592) return FRAMESIZE_QSXGA; // 2592x1944 (máximo OV5640)
+    // FRAMESIZE_5MP (2592x1944, el nominal "máximo" del OV5640) da timeout
+    // de captura sistemático en esta placa/timing (esp_camera_fb_get()
+    // nunca devuelve frame, sin importar la calidad) - probado y descartado.
+    // FRAMESIZE_QSXGA (2560x1920, ~2.4% menos por lado) sí es estable y es
+    // el techo real que ofrecemos.
+    if (width >= 2560) return FRAMESIZE_QSXGA; // 2560x1920 (máximo estable)
     if (width >= 2048) return FRAMESIZE_QXGA;  // 2048x1536
+    if (width >= 1920) return FRAMESIZE_FHD;   // 1920x1080
     if (width >= 1600) return FRAMESIZE_UXGA;  // 1600x1200
     if (width >= 1280) return FRAMESIZE_HD;    // 1280x720
     if (width >= 1024) return FRAMESIZE_XGA;   // 1024x768
@@ -72,7 +84,7 @@ esp_err_t camera_init(void)
         // Reserva el buffer DMA/JPEG al tamaño máximo del sensor una sola vez
         // en el init; sensor->set_framesize() en cada captura solo puede
         // *reducir* la resolución dentro de ese buffer, nunca superarlo.
-        .frame_size = FRAMESIZE_QSXGA,
+        .frame_size = FRAMESIZE_QSXGA, // 2560x1920, máximo estable en esta placa
         .jpeg_quality = 12,
         .fb_count = 1,
         .fb_location = CAMERA_FB_IN_PSRAM,
@@ -84,6 +96,7 @@ esp_err_t camera_init(void)
         ESP_LOGE(TAG, "esp_camera_init falló: %s", esp_err_to_name(err));
         return err;
     }
+    s_capture_mutex = xSemaphoreCreateMutex();
     ESP_LOGI(TAG, "Cámara OV5640 inicializada");
     return ESP_OK;
 }
@@ -91,13 +104,28 @@ esp_err_t camera_init(void)
 esp_err_t camera_capture_jpeg(int width, int height, int quality, int max_kb,
                                const uint8_t **out_buf, size_t *out_len)
 {
+    xSemaphoreTake(s_capture_mutex, portMAX_DELAY);
+
     sensor_t *sensor = esp_camera_sensor_get();
     if (!sensor) {
         ESP_LOGE(TAG, "Sensor de cámara no disponible");
+        xSemaphoreGive(s_capture_mutex);
         return ESP_FAIL;
     }
 
-    sensor->set_framesize(sensor, framesize_for(width, height));
+    framesize_t desired = framesize_for(width, height);
+    if (desired != s_current_framesize) {
+        sensor->set_framesize(sensor, desired);
+        s_current_framesize = desired;
+        // El sensor tarda un frame en aplicar la nueva resolución: el
+        // siguiente fb_get() puede devolver todavía un frame con el tamaño
+        // anterior. Se descarta ese primer frame "de transición" para que
+        // el que se devuelve al llamador ya sea el correcto.
+        camera_fb_t *stale = esp_camera_fb_get();
+        if (stale) {
+            esp_camera_fb_return(stale);
+        }
+    }
 
     int camera_quality = map_pillow_quality_to_camera(quality);
     size_t max_bytes = (size_t)(max_kb > 0 ? max_kb : 500) * 1024;
@@ -111,19 +139,30 @@ esp_err_t camera_capture_jpeg(int width, int height, int quality, int max_kb,
         }
         fb = esp_camera_fb_get();
         if (!fb) {
-            ESP_LOGW(TAG, "esp_camera_fb_get devolvió NULL (intento %d)", attempt + 1);
-            return ESP_FAIL;
-        }
-        if (fb->len <= max_bytes || camera_quality >= 55) {
+            // A resoluciones altas con poca compresión el JPEG puede no
+            // entrar en el buffer DMA y fb_get() devuelve NULL directo (no
+            // "frame válido pero grande"). Se trata igual que el caso de
+            // abajo: subir compresión y reintentar.
+            ESP_LOGW(TAG, "esp_camera_fb_get devolvió NULL (intento %d): posible JPEG "
+                           "demasiado grande para el buffer DMA a esta calidad/resolución",
+                      attempt + 1);
+        } else if (fb->len <= max_bytes || camera_quality >= 55) {
             break;
         }
         camera_quality = (camera_quality + 8) > 63 ? 63 : (camera_quality + 8);
+    }
+    if (!fb) {
+        ESP_LOGE(TAG, "Fallo de captura tras varios intentos");
+        xSemaphoreGive(s_capture_mutex);
+        return ESP_FAIL;
     }
 
     s_last_fb = fb;
     *out_buf = fb->buf;
     *out_len = fb->len;
     return ESP_OK;
+    // El mutex sigue tomado a propósito: lo libera camera_release() una vez
+    // que el llamador terminó de usar el framebuffer.
 }
 
 void camera_release(void)
@@ -132,4 +171,5 @@ void camera_release(void)
         esp_camera_fb_return(s_last_fb);
         s_last_fb = NULL;
     }
+    xSemaphoreGive(s_capture_mutex);
 }

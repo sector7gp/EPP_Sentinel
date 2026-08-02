@@ -63,11 +63,34 @@ idf.py -p <puerto> flash monitor
    `device_id` y `device_token`, guardar. El dispositivo reinicia solo y
    entra en operación normal.
 5. `http://<host>/status` muestra el estado de la última captura/subida en
-   cualquier momento.
+   cualquier momento. `/monitor` da una vista en vivo (auto-refresh) y
+   `/settings` deja elegir la resolución/calidad que usa esa vista, sin
+   tocar la configuración real de captura (esa la maneja el backend).
+
+## Actualizar firmware por OTA
+
+Requiere haber flasheado ya una vez la versión con particiones `ota_0`/`ota_1`
+(ver `partitions.csv`) — si el dispositivo todavía tiene la partición
+`factory` de una versión anterior, hace falta un flasheo por USB único para
+migrar.
+
+```bash
+idf.py build
+curl -X POST http://<host>/ota \
+  -u ":<device_token>" \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary @build/epp_sentinel_cam.bin
+```
+
+O desde `http://<host>/ota` en el navegador: elegir el `.bin` y pegar el
+`device_token` del dispositivo como contraseña. El dispositivo escribe la
+imagen en la partición inactiva, la marca como próximo arranque y reinicia
+solo. Si el firmware nuevo no llega a confirmar que arrancó bien (no llega a
+inicializar red + cámara), el bootloader vuelve solo a la versión anterior
+en el siguiente reset (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`).
 
 ## Alcance de esta primera versión
 
-- Sin OTA: actualizar firmware requiere flasheo por USB.
 - Sin TLS: asume backend en la misma LAN (HTTP plano), igual que la Raspberry.
 - Sin cola persistente multi-item: se reintenta la última captura fallida con
   backoff exponencial hasta que el siguiente intervalo la reemplaza por una
@@ -85,4 +108,5 @@ idf.py -p <puerto> flash monitor
 | `main/scheduler.*` | Franja horaria / intervalo de captura | `agent/scheduler.py` |
 | `main/backend_client.*` | `GET /config`, `POST /captures`, backoff | `agent/uploader.py` |
 | `main/camera.*` | Captura JPEG OV5640 + ajuste por `max_kb` | `agent/capture.py` |
+| `main/ota_update.*` | Escritura a la partición OTA (`esp_ota_ops`) | — |
 | `main/app_main.c` | Orquestación del loop principal + watchdog | `agent/main.py` |

@@ -3,6 +3,7 @@
 #include <time.h>
 
 #include "esp_log.h"
+#include "esp_ota_ops.h"
 #include "esp_task_wdt.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -60,6 +61,12 @@ void app_main(void)
         status_led_set(STATUS_LED_ERROR);
         wait_forever();
     }
+
+    // Llegar hasta acá (red + portal + cámara arriba) es la confirmación de
+    // que el firmware nuevo de un OTA arrancó bien; si no se llama a esto,
+    // el bootloader vuelve solo a la versión anterior en el próximo reset
+    // (CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE, ver sdkconfig.defaults).
+    esp_ota_mark_app_valid_cancel_rollback();
 
     esp_task_wdt_config_t wdt_config = {
         .timeout_ms = TASK_WDT_TIMEOUT_MS,
@@ -131,7 +138,19 @@ void app_main(void)
                 if (camera_capture_jpeg(remote_config.image_width, remote_config.image_height,
                                           remote_config.image_jpeg_quality,
                                           remote_config.image_max_kb, &buf, &len) == ESP_OK) {
-                    if (backend_client_upload(buf, len, remote_config.stream_id) == ESP_OK) {
+                    // Copiar y soltar el framebuffer (y el mutex de cámara) antes de
+                    // subir: la subida puede tardar varios segundos por red y no debe
+                    // dejar bloqueado a quien pida /capture mientras tanto.
+                    uint8_t *capture_copy = malloc(len);
+                    if (capture_copy) {
+                        memcpy(capture_copy, buf, len);
+                    }
+                    camera_release();
+
+                    if (!capture_copy) {
+                        ESP_LOGE(TAG, "Sin memoria para copiar la captura");
+                        provisioning_status_set_note("Error: sin memoria para la captura");
+                    } else if (backend_client_upload(capture_copy, len, remote_config.stream_id) == ESP_OK) {
                         ESP_LOGI(TAG, "Captura subida (%u bytes)", (unsigned)len);
                         provisioning_status_set_capture(true, "OK");
                         if (pending_copy) {
@@ -139,22 +158,19 @@ void app_main(void)
                             pending_copy = NULL;
                             pending_len = 0;
                         }
+                        free(capture_copy);
                         upload_retries = 0;
                     } else {
                         ESP_LOGW(TAG, "Fallo al subir la captura; se reintentará con backoff");
                         if (pending_copy) {
                             free(pending_copy);
                         }
-                        pending_copy = malloc(len);
-                        if (pending_copy) {
-                            memcpy(pending_copy, buf, len);
-                            pending_len = len;
-                        }
+                        pending_copy = capture_copy;
+                        pending_len = len;
                         upload_retries = 1;
                         next_retry_at = now + backend_client_retry_delay_seconds(upload_retries);
                         provisioning_status_set_capture(false, "subida falló, reintentando");
                     }
-                    camera_release();
                 } else {
                     ESP_LOGE(TAG, "Fallo de captura de cámara");
                     provisioning_status_set_note("Error de captura de cámara");

@@ -547,19 +547,19 @@ export default function ConfigPage() {
 
             <div>
               <h2>Calidad de imagen</h2>
-              <label>Ancho (320-2592)</label>
+              <label>Ancho (320-2560)</label>
               <input
                 type="number"
                 min={320}
-                max={2592}
+                max={2560}
                 value={image.width}
                 onChange={(e) => setImage((i) => ({ ...i, width: Number(e.target.value) }))}
               />
-              <label>Alto (240-1944)</label>
+              <label>Alto (240-1920)</label>
               <input
                 type="number"
                 min={240}
-                max={1944}
+                max={1920}
                 value={image.height}
                 onChange={(e) => setImage((i) => ({ ...i, height: Number(e.target.value) }))}
               />

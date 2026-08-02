@@ -9,6 +9,7 @@ idf_component_register(
         "scheduler.c"
         "camera.c"
         "status_led.c"
+        "ota_update.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_eth
@@ -22,4 +23,6 @@ idf_component_register(
         esp_timer
         mdns
         esp32-camera
+        app_update
+        mbedtls
 )

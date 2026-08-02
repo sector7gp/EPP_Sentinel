@@ -53,8 +53,8 @@ class ScheduleResponse(ScheduleUpdate):
 
 
 class ImageSettingsUpdate(BaseModel):
-    width: int = Field(default=1280, ge=320, le=2592)
-    height: int = Field(default=720, ge=240, le=1944)
+    width: int = Field(default=1280, ge=320, le=2560)
+    height: int = Field(default=720, ge=240, le=1920)
     jpeg_quality: int = Field(default=75, ge=30, le=100)
     max_kb: int = Field(default=500, ge=50, le=5000)
 
