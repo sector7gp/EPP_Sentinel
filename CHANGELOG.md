@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0] — 2026-08-02
+
+### Nuevo
+
+- **Ajustes de imagen del sensor** (`/settings`): brillo, contraste, saturación, nitidez, reducción de ruido, balance de blancos (auto + modo fijo), exposición (auto + AEC2 + compensación), ganancia (auto + manual + techo), espejo/flip, corrección de lente/píxeles y efectos especiales — todo lo que expone el driver del OV5640 salvo autofoco (no soportado en esta placa). Se guardan en NVS (`camera_settings.c`) y se aplican de inmediato sin reiniciar; sobreviven reinicios y actualizaciones OTA.
+- **Portal**: la página de Inicio ya no repite el link a "estado o monitor en vivo" (queda solo en Estado, que ya lo tenía).
+
 ## [1.3.0] — 2026-08-01
 
 ### Nuevo

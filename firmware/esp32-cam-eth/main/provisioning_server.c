@@ -6,6 +6,7 @@
 #include <time.h>
 
 #include "camera.h"
+#include "camera_settings.h"
 #include "device_config.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
@@ -37,6 +38,11 @@ static const char *PAGE_CSS =
     ".card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:1.25rem;"
     "box-shadow:0 1px 2px rgba(15,23,42,.06)}"
     "h2{margin-top:0;font-size:1.05rem}"
+    "h3{font-size:.85rem;text-transform:uppercase;letter-spacing:.03em;"
+    "color:#64748b;margin:1.5rem 0 .25rem;border-top:1px solid #e2e8f0;padding-top:1rem}"
+    "form>h3:first-of-type{border-top:none;padding-top:0}"
+    "label.checkbox{display:flex;align-items:center;gap:.5rem;margin:.6rem 0}"
+    "label.checkbox input{width:auto}"
     "label{display:block;font-size:.85rem;color:#475569;margin:.85rem 0 .3rem}"
     "input,select{width:100%;padding:.55rem .6rem;border:1px solid #cbd5e1;border-radius:8px;"
     "font-size:.95rem;font-family:inherit}"
@@ -65,6 +71,7 @@ static const char *PAGE_CSS =
     "code{background:#0f172a}"
     "ul.kv li{border-color:#334155}"
     ".muted{color:#94a3b8}"
+    "h3{color:#94a3b8;border-color:#334155}"
     "}";
 
 static const char *PROVISION_FORM_BODY =
@@ -209,7 +216,7 @@ static esp_err_t send_chunk(httpd_req_t *req, const char *s)
 static esp_err_t send_page_open(httpd_req_t *req, const char *title)
 {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
-    char head[2560];
+    char head[3200];
     int n = snprintf(head, sizeof(head),
                        "<!doctype html><html><head><meta charset='utf-8'>"
                        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -251,9 +258,7 @@ static esp_err_t root_get_handler(httpd_req_t *req)
     snprintf(body, sizeof(body),
               "<h2>Dispositivo provisionado</h2>"
               "<ul class='kv'><li><span>device_id</span><span>%s</span></li>"
-              "<li><span>backend_url</span><span>%s</span></li></ul>"
-              "<p class='muted'>Ver <a href='/status'>estado</a> o "
-              "<a href='/monitor'>monitor en vivo</a>.</p>",
+              "<li><span>backend_url</span><span>%s</span></li></ul>",
               cfg->device_id, cfg->backend_url);
     send_chunk(req, body);
     return send_page_close(req);
@@ -416,13 +421,192 @@ static esp_err_t monitor_get_handler(httpd_req_t *req)
     return send_page_close(req);
 }
 
+// Helpers para armar el formulario de ajustes de imagen sin buffers grandes
+// en la pila de la tarea httpd (cada uno arma un fragmento chico y lo manda
+// como chunk aparte).
+static void send_num_field(httpd_req_t *req, const char *label, const char *name, int min_v,
+                             int max_v, int value)
+{
+    char buf[192];
+    snprintf(buf, sizeof(buf),
+              "<label>%s<input type='number' name='%s' min='%d' max='%d' value='%d'></label>",
+              label, name, min_v, max_v, value);
+    send_chunk(req, buf);
+}
+
+static void send_checkbox_field(httpd_req_t *req, const char *label, const char *name, bool checked)
+{
+    char buf[192];
+    snprintf(buf, sizeof(buf),
+              "<label class='checkbox'><input type='checkbox' name='%s' value='1'%s> %s</label>",
+              name, checked ? " checked" : "", label);
+    send_chunk(req, buf);
+}
+
+static void send_select_open(httpd_req_t *req, const char *label, const char *name)
+{
+    char buf[96];
+    snprintf(buf, sizeof(buf), "<label>%s<select name='%s'>", label, name);
+    send_chunk(req, buf);
+}
+
+static void send_option(httpd_req_t *req, int value, const char *text, bool selected)
+{
+    char buf[96];
+    snprintf(buf, sizeof(buf), "<option value='%d'%s>%s</option>", value,
+              selected ? " selected" : "", text);
+    send_chunk(req, buf);
+}
+
+static void send_select_close(httpd_req_t *req)
+{
+    send_chunk(req, "</select></label>");
+}
+
 static esp_err_t settings_get_handler(httpd_req_t *req)
 {
-    if (send_page_open(req, "Ajustes de monitor") != ESP_OK) {
+    if (send_page_open(req, "Ajustes") != ESP_OK) {
         return ESP_FAIL;
     }
     send_chunk(req, SETTINGS_FORM_BODY);
+
+    const camera_settings_t *cs = camera_settings_get();
+
+    send_chunk(req, "<h2>Ajustes de imagen</h2>"
+                      "<p class='muted'>Estos se guardan en el dispositivo y se aplican a "
+                      "toda captura (no solo al monitor de arriba).</p>"
+                      "<form method='POST' action='/settings'>"
+                      "<h3>Imagen</h3>");
+    send_num_field(req, "Brillo (-3 a 3)", "brightness", -3, 3, cs->brightness);
+    send_num_field(req, "Contraste (-3 a 3)", "contrast", -3, 3, cs->contrast);
+    send_num_field(req, "Saturacion (-4 a 4)", "saturation", -4, 4, cs->saturation);
+    send_num_field(req, "Nitidez (-3 a 3)", "sharpness", -3, 3, cs->sharpness);
+    send_num_field(req, "Reduccion de ruido (0 a 8)", "denoise", 0, 8, cs->denoise);
+
+    send_chunk(req, "<h3>Balance de blancos</h3>");
+    send_checkbox_field(req, "Automatico (AWB)", "whitebal", cs->whitebal);
+    send_select_open(req, "Modo fijo (si AWB esta apagado)", "wb_mode");
+    send_option(req, 0, "Auto", cs->wb_mode == 0);
+    send_option(req, 1, "Soleado", cs->wb_mode == 1);
+    send_option(req, 2, "Nublado", cs->wb_mode == 2);
+    send_option(req, 3, "Oficina", cs->wb_mode == 3);
+    send_option(req, 4, "Interior/hogar", cs->wb_mode == 4);
+    send_select_close(req);
+
+    send_chunk(req, "<h3>Exposicion</h3>");
+    send_checkbox_field(req, "Automatica (AEC)", "exposure_ctrl", cs->exposure_ctrl);
+    send_checkbox_field(req, "Algoritmo AEC mejorado (AEC2)", "aec2", cs->aec2);
+    send_num_field(req, "Compensacion de exposicion (-5 a 5)", "ae_level", -5, 5, cs->ae_level);
+
+    send_chunk(req, "<h3>Ganancia</h3>");
+    send_checkbox_field(req, "Automatica (AGC)", "gain_ctrl", cs->gain_ctrl);
+    send_num_field(req, "Ganancia manual (0 a 64, si AGC esta apagado)", "agc_gain", 0, 64,
+                     cs->agc_gain);
+    send_select_open(req, "Techo de ganancia (AGC)", "gainceiling");
+    send_option(req, 0, "2x", cs->gainceiling == 0);
+    send_option(req, 1, "4x", cs->gainceiling == 1);
+    send_option(req, 2, "8x", cs->gainceiling == 2);
+    send_option(req, 3, "16x", cs->gainceiling == 3);
+    send_option(req, 4, "32x", cs->gainceiling == 4);
+    send_option(req, 5, "64x", cs->gainceiling == 5);
+    send_option(req, 6, "128x", cs->gainceiling == 6);
+    send_select_close(req);
+
+    send_chunk(req, "<h3>Orientacion</h3>");
+    send_checkbox_field(req, "Espejo horizontal", "hmirror", cs->hmirror);
+    send_checkbox_field(req, "Voltear vertical", "vflip", cs->vflip);
+
+    send_chunk(req, "<h3>Correccion de imagen</h3>");
+    send_checkbox_field(req, "Correccion de viñeteado (lente)", "lenc", cs->lenc);
+    send_checkbox_field(req, "Correccion de pixeles negros", "bpc", cs->bpc);
+    send_checkbox_field(req, "Correccion de pixeles blancos", "wpc", cs->wpc);
+
+    send_chunk(req, "<h3>Efecto especial</h3>");
+    send_select_open(req, "Efecto", "special_effect");
+    send_option(req, 0, "Ninguno", cs->special_effect == 0);
+    send_option(req, 1, "Negativo", cs->special_effect == 1);
+    send_option(req, 2, "Escala de grises", cs->special_effect == 2);
+    send_option(req, 3, "Tinte rojo", cs->special_effect == 3);
+    send_option(req, 4, "Tinte verde", cs->special_effect == 4);
+    send_option(req, 5, "Tinte azul", cs->special_effect == 5);
+    send_option(req, 6, "Sepia", cs->special_effect == 6);
+    send_select_close(req);
+
+    send_chunk(req, "<button type='submit'>Guardar ajustes de imagen</button></form>");
+
     return send_page_close(req);
+}
+
+static int form_int(const char *body, const char *key, int def_val)
+{
+    char val[16];
+    if (httpd_query_key_value(body, key, val, sizeof(val)) == ESP_OK) {
+        return atoi(val);
+    }
+    return def_val;
+}
+
+static bool form_bool(const char *body, const char *key)
+{
+    char val[8];
+    return httpd_query_key_value(body, key, val, sizeof(val)) == ESP_OK;
+}
+
+// Guarda los ajustes de imagen (persistentes en NVS) y los re-aplica al
+// sensor. No requiere reinicio, a diferencia de /save (backend/token).
+static esp_err_t settings_post_handler(httpd_req_t *req)
+{
+    if (req->content_len <= 0 || req->content_len >= 1024) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Payload invalido");
+        return ESP_FAIL;
+    }
+    char buf[1024];
+    int received = 0;
+    while (received < req->content_len) {
+        int ret = httpd_req_recv(req, buf + received, req->content_len - received);
+        if (ret <= 0) {
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Error de lectura");
+            return ESP_FAIL;
+        }
+        received += ret;
+    }
+    buf[received] = '\0';
+
+    camera_settings_t s = *camera_settings_get();
+    s.brightness = clampi(form_int(buf, "brightness", s.brightness), -3, 3);
+    s.contrast = clampi(form_int(buf, "contrast", s.contrast), -3, 3);
+    s.saturation = clampi(form_int(buf, "saturation", s.saturation), -4, 4);
+    s.sharpness = clampi(form_int(buf, "sharpness", s.sharpness), -3, 3);
+    s.denoise = clampi(form_int(buf, "denoise", s.denoise), 0, 8);
+    s.whitebal = form_bool(buf, "whitebal");
+    s.wb_mode = clampi(form_int(buf, "wb_mode", s.wb_mode), 0, 4);
+    s.exposure_ctrl = form_bool(buf, "exposure_ctrl");
+    s.aec2 = form_bool(buf, "aec2");
+    s.ae_level = clampi(form_int(buf, "ae_level", s.ae_level), -5, 5);
+    s.gain_ctrl = form_bool(buf, "gain_ctrl");
+    s.agc_gain = clampi(form_int(buf, "agc_gain", s.agc_gain), 0, 64);
+    s.gainceiling = clampi(form_int(buf, "gainceiling", s.gainceiling), 0, 6);
+    s.hmirror = form_bool(buf, "hmirror");
+    s.vflip = form_bool(buf, "vflip");
+    s.lenc = form_bool(buf, "lenc");
+    s.bpc = form_bool(buf, "bpc");
+    s.wpc = form_bool(buf, "wpc");
+    s.special_effect = clampi(form_int(buf, "special_effect", s.special_effect), 0, 6);
+
+    if (camera_settings_save(&s) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "No se pudo guardar en NVS");
+        return ESP_FAIL;
+    }
+    camera_apply_settings();
+
+    if (send_page_open(req, "Ajustes guardados") == ESP_OK) {
+        send_chunk(req, "<h2>Ajustes de imagen guardados</h2>"
+                          "<p class='muted'>Se aplicaron al sensor. "
+                          "<a href='/settings'>Volver</a> o "
+                          "<a href='/monitor'>ver el monitor</a>.</p>");
+        send_page_close(req);
+    }
+    return ESP_OK;
 }
 
 // Compara la contraseña de un header "Authorization: Basic base64(:token)"
@@ -546,11 +730,11 @@ esp_err_t provisioning_server_start(void)
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_uri_handlers = 10;
-    // El default (4096) no alcanza: send_page_open() usa un buffer de 2560
-    // bytes en la pila de la tarea del httpd, sumado al buffer propio de
-    // cada handler (hasta ~900 bytes) y al overhead de snprintf. Sin este
-    // aumento se pisa la pila y crashea con errores random de lwIP/FreeRTOS
-    // en el primer request tras el boot.
+    // El default (4096) no alcanza: send_page_open() usa un buffer de 3200
+    // bytes en la pila de la tarea del httpd (la CSS compartida), sumado al
+    // buffer propio de cada handler (hasta ~1KB) y al overhead de snprintf.
+    // Sin este aumento se pisa la pila y crashea con errores random de
+    // lwIP/FreeRTOS en el primer request tras el boot.
     config.stack_size = 8192;
     esp_err_t start_err = httpd_start(&server, &config);
     if (start_err != ESP_OK) {
@@ -570,6 +754,8 @@ esp_err_t provisioning_server_start(void)
         .uri = "/monitor", .method = HTTP_GET, .handler = monitor_get_handler};
     static const httpd_uri_t settings_uri = {
         .uri = "/settings", .method = HTTP_GET, .handler = settings_get_handler};
+    static const httpd_uri_t settings_post_uri = {
+        .uri = "/settings", .method = HTTP_POST, .handler = settings_post_handler};
     static const httpd_uri_t ota_get_uri = {
         .uri = "/ota", .method = HTTP_GET, .handler = ota_get_handler};
     static const httpd_uri_t ota_post_uri = {
@@ -580,6 +766,7 @@ esp_err_t provisioning_server_start(void)
     httpd_register_uri_handler(server, &capture_uri);
     httpd_register_uri_handler(server, &monitor_uri);
     httpd_register_uri_handler(server, &settings_uri);
+    httpd_register_uri_handler(server, &settings_post_uri);
     httpd_register_uri_handler(server, &ota_get_uri);
     httpd_register_uri_handler(server, &ota_post_uri);
 

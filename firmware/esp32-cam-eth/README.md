@@ -108,5 +108,6 @@ en el siguiente reset (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`).
 | `main/scheduler.*` | Franja horaria / intervalo de captura | `agent/scheduler.py` |
 | `main/backend_client.*` | `GET /config`, `POST /captures`, backoff | `agent/uploader.py` |
 | `main/camera.*` | Captura JPEG OV5640 + ajuste por `max_kb` | `agent/capture.py` |
+| `main/camera_settings.*` | Brillo/contraste/AWB/AEC/AGC/etc del sensor, persistente en NVS | — |
 | `main/ota_update.*` | Escritura a la partición OTA (`esp_ota_ops`) | — |
 | `main/app_main.c` | Orquestación del loop principal + watchdog | `agent/main.py` |

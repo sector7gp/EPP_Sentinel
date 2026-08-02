@@ -8,6 +8,7 @@ idf_component_register(
         "backend_client.c"
         "scheduler.c"
         "camera.c"
+        "camera_settings.c"
         "status_led.c"
         "ota_update.c"
     INCLUDE_DIRS "."

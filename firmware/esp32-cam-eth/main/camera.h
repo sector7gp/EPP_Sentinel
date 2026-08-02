@@ -23,3 +23,11 @@ esp_err_t camera_capture_jpeg(int width, int height, int quality, int max_kb,
 
 /** Libera el framebuffer devuelto por camera_capture_jpeg y el mutex de captura. */
 void camera_release(void);
+
+/**
+ * Re-aplica al sensor los ajustes actuales de camera_settings (ver
+ * camera_settings.h) tras guardarlos desde /settings. Toma el mismo mutex
+ * que camera_capture_jpeg para no cruzar escrituras de registro I2C con
+ * una captura en curso.
+ */
+void camera_apply_settings(void);

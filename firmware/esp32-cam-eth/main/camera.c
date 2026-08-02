@@ -1,5 +1,6 @@
 #include "camera.h"
 
+#include "camera_settings.h"
 #include "driver/ledc.h"
 #include "esp_camera.h"
 #include "esp_log.h"
@@ -97,6 +98,10 @@ esp_err_t camera_init(void)
         return err;
     }
     s_capture_mutex = xSemaphoreCreateMutex();
+
+    camera_settings_init();
+    camera_settings_apply(esp_camera_sensor_get());
+
     ESP_LOGI(TAG, "Cámara OV5640 inicializada");
     return ESP_OK;
 }
@@ -171,5 +176,12 @@ void camera_release(void)
         esp_camera_fb_return(s_last_fb);
         s_last_fb = NULL;
     }
+    xSemaphoreGive(s_capture_mutex);
+}
+
+void camera_apply_settings(void)
+{
+    xSemaphoreTake(s_capture_mutex, portMAX_DELAY);
+    camera_settings_apply(esp_camera_sensor_get());
     xSemaphoreGive(s_capture_mutex);
 }
