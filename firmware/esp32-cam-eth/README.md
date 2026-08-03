@@ -70,6 +70,24 @@ idf.py -p <puerto> flash monitor
    (brillo/contraste/AWB/AEC/AGC/etc, ver `camera_settings.h`), que sí
    persiste y se guarda sin recargar la página. `/settings` redirige ahí.
 
+### Reconfigurar backend_url/device_id/device_token
+
+`/` deja de mostrar el formulario de alta una vez que el dispositivo ya está
+provisionado (solo se ve la pantalla de solo lectura "Dispositivo
+provisionado") — todavía no hay un link "Reconfigurar" en la UI. Igual se
+puede reconfigurar en cualquier momento llamando a `POST /save` directo,
+que no valida el estado de provisioning:
+
+```bash
+curl "http://<host>/save" \
+  --data-urlencode "backend_url=http://<ip-backend>:<puerto>" \
+  --data-urlencode "device_id=<device_id-actual>" \
+  --data-urlencode "device_token=<token-nuevo>"
+```
+
+Mantener `backend_url`/`device_id` iguales a los actuales si solo se quiere
+cambiar el token. El dispositivo reinicia solo al guardar.
+
 ## Actualizar firmware por OTA
 
 Requiere haber flasheado ya una vez la versión con particiones `ota_0`/`ota_1`
@@ -99,6 +117,9 @@ en el siguiente reset (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`).
   backoff exponencial hasta que el siguiente intervalo la reemplaza por una
   nueva (ver `main/app_main.c`).
 - No implementa Hik-Connect (fuera de alcance del backend actual).
+- Sin UI para reconfigurar backend_url/device_id/device_token una vez
+  provisionado: hay que llamar a `POST /save` directamente (ver
+  "Reconfigurar..." más arriba).
 
 ## Estructura
 

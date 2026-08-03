@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.5.1] — 2026-08-03
+
+### Documentación
+
+- **Firmware**: documentado que `/` no muestra el formulario de alta una vez que el dispositivo ya está provisionado (limitación preexistente, sin link "Reconfigurar" en la UI todavía), y el workaround actual — llamar a `POST /save` directo por `curl` para cambiar `backend_url`/`device_id`/`device_token` en cualquier momento.
+
 ## [1.5.0] — 2026-08-03
 
 ### Nuevo
