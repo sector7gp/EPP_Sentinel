@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.0] — 2026-08-03
+
+### Nuevo
+
+- **`/monitor` y `/settings` fusionados en una sola página**: video en vivo, preset de resolución, botón "Forzar envío al backend" y el formulario de ajustes de imagen, todo junto. El formulario de ajustes se guarda por `fetch()` (sin recargar la página), así se puede ver el efecto en el video mientras se prueban valores. `/settings` queda como redirect a `/monitor` para no romper enlaces viejos.
+- **`POST /capture-now`**: dispara una captura+subida real al backend con la configuración remota actual (la misma que usa el loop programado), sin esperar el próximo intervalo — útil para confirmar que el backend/IA está procesando bien antes de dejarlo desatendido.
+- **Monitor más fluido**: el auto-refresh pasó de 1.5s a 0.5s por frame.
+
+### Correcciones
+
+- **Firmware**: al cambiar de resolución en caliente se descartaba un solo frame de transición, insuficiente para que AEC/AGC (auto-exposición/ganancia) reconvergieran — la imagen quedaba sub-expuesta ("oscura") justo cuando se abría `/monitor` con una resolución distinta a la que venía usando el loop de capturas programadas. Ahora se descartan 5 frames tras cada cambio de resolución.
+
 ## [1.4.0] — 2026-08-02
 
 ### Nuevo

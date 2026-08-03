@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include "backend_client.h"
 #include "camera.h"
 #include "camera_settings.h"
 #include "device_config.h"
@@ -223,7 +224,7 @@ static esp_err_t send_page_open(httpd_req_t *req, const char *title)
                        "<title>%s - EPP Sentinel Cam</title><style>%s</style></head>"
                        "<body><div class='wrap'><header><h1>EPP Sentinel Cam</h1>"
                        "<nav><a href='/'>Inicio</a><a href='/status'>Estado</a>"
-                       "<a href='/monitor'>Monitor</a><a href='/settings'>Ajustes</a>"
+                       "<a href='/monitor'>Monitor</a>"
                        "<a href='/ota'>OTA</a></nav>"
                        "</header><main class='card'>",
                        title, PAGE_CSS);
@@ -387,40 +388,6 @@ static esp_err_t capture_get_handler(httpd_req_t *req)
 }
 
 // Pagina con <img> apuntando a /capture que se refresca sola por JS.
-static esp_err_t monitor_get_handler(httpd_req_t *req)
-{
-    char query[128] = {0};
-    httpd_req_get_url_query_str(req, query, sizeof(query));
-
-    int width, height;
-    parse_resolution(query, &width, &height);
-    width = clampi(width, 320, 2560);
-    height = clampi(height, 240, 1920);
-    int quality = clampi(query_int(query, "quality", 75), 30, 100);
-    int max_kb = clampi(query_int(query, "max_kb", 500), 50, 5000);
-
-    char capture_src[96];
-    snprintf(capture_src, sizeof(capture_src), "/capture?resolution=%dx%d&quality=%d&max_kb=%d",
-              width, height, quality, max_kb);
-
-    if (send_page_open(req, "Monitor") != ESP_OK) {
-        return ESP_FAIL;
-    }
-    char body[768];
-    snprintf(body, sizeof(body),
-              "<h2>Monitor en vivo</h2>"
-              "<p class='muted'>%dx%d &middot; calidad %d &middot; max %d KB &middot; "
-              "<a href='/settings'>cambiar</a></p>"
-              "<img id='mon' class='monitor-img' src='%s' alt='Vista de la camara'>"
-              "<script>"
-              "var src='%s',img=document.getElementById('mon');"
-              "setInterval(function(){img.src=src+'&t='+Date.now();},1500);"
-              "</script>",
-              width, height, quality, max_kb, capture_src, capture_src);
-    send_chunk(req, body);
-    return send_page_close(req);
-}
-
 // Helpers para armar el formulario de ajustes de imagen sin buffers grandes
 // en la pila de la tarea httpd (cada uno arma un fragmento chico y lo manda
 // como chunk aparte).
@@ -463,19 +430,65 @@ static void send_select_close(httpd_req_t *req)
     send_chunk(req, "</select></label>");
 }
 
-static esp_err_t settings_get_handler(httpd_req_t *req)
+// Monitor + ajustes en una sola página: el formulario de ajustes de imagen
+// se manda por fetch() (ver JS al final) en vez de POST normal, así no
+// interrumpe el <img> que se refresca solo mientras se están probando
+// valores.
+static esp_err_t monitor_get_handler(httpd_req_t *req)
 {
-    if (send_page_open(req, "Ajustes") != ESP_OK) {
+    char query[128] = {0};
+    httpd_req_get_url_query_str(req, query, sizeof(query));
+
+    int width, height;
+    parse_resolution(query, &width, &height);
+    width = clampi(width, 320, 2560);
+    height = clampi(height, 240, 1920);
+    int quality = clampi(query_int(query, "quality", 75), 30, 100);
+    int max_kb = clampi(query_int(query, "max_kb", 500), 50, 5000);
+
+    char capture_src[96];
+    snprintf(capture_src, sizeof(capture_src), "/capture?resolution=%dx%d&quality=%d&max_kb=%d",
+              width, height, quality, max_kb);
+
+    if (send_page_open(req, "Monitor") != ESP_OK) {
         return ESP_FAIL;
     }
+    char body[512];
+    snprintf(body, sizeof(body),
+              "<h2>Monitor en vivo</h2>"
+              "<p class='muted'>%dx%d &middot; calidad %d &middot; max %d KB</p>"
+              "<img id='mon' class='monitor-img' src='%s' alt='Vista de la camara'>",
+              width, height, quality, max_kb, capture_src);
+    send_chunk(req, body);
+
+    // Formulario de preset de resolucion (no persiste, ver SETTINGS_FORM_BODY
+    // mas arriba): string estatico, se manda tal cual sin pasar por snprintf.
     send_chunk(req, SETTINGS_FORM_BODY);
+
+    char script[800];
+    snprintf(script, sizeof(script),
+              "<button type='button' id='force-btn'>Forzar envio al backend</button>"
+              "<p id='force-status' class='muted'></p>"
+              "<script>"
+              "var src='%s',img=document.getElementById('mon');"
+              "setInterval(function(){img.src=src+'&t='+Date.now();},500);"
+              "document.getElementById('force-btn').addEventListener('click',function(){"
+              "var st=document.getElementById('force-status');st.textContent='Enviando...';"
+              "fetch('/capture-now',{method:'POST'}).then(function(r){return r.text().then("
+              "function(t){st.textContent=t;});}).catch(function(e){st.textContent="
+              "'Error de red: '+e;});"
+              "});"
+              "</script>",
+              capture_src);
+    send_chunk(req, script);
 
     const camera_settings_t *cs = camera_settings_get();
 
     send_chunk(req, "<h2>Ajustes de imagen</h2>"
                       "<p class='muted'>Estos se guardan en el dispositivo y se aplican a "
-                      "toda captura (no solo al monitor de arriba).</p>"
-                      "<form method='POST' action='/settings'>"
+                      "toda captura (no solo a este monitor). Se guardan sin recargar la "
+                      "pagina, para poder ver el efecto en vivo.</p>"
+                      "<form id='camset-form'>"
                       "<h3>Imagen</h3>");
     send_num_field(req, "Brillo (-3 a 3)", "brightness", -3, 3, cs->brightness);
     send_num_field(req, "Contraste (-3 a 3)", "contrast", -3, 3, cs->contrast);
@@ -532,7 +545,19 @@ static esp_err_t settings_get_handler(httpd_req_t *req)
     send_option(req, 6, "Sepia", cs->special_effect == 6);
     send_select_close(req);
 
-    send_chunk(req, "<button type='submit'>Guardar ajustes de imagen</button></form>");
+    send_chunk(req, "<button type='submit'>Guardar ajustes de imagen</button>"
+                      "</form><p id='camset-status' class='muted'></p>"
+                      "<script>"
+                      "document.getElementById('camset-form').addEventListener('submit',"
+                      "function(ev){"
+                      "ev.preventDefault();"
+                      "var st=document.getElementById('camset-status');st.textContent='Guardando...';"
+                      "fetch('/settings',{method:'POST',"
+                      "body:new URLSearchParams(new FormData(ev.target))})"
+                      ".then(function(r){return r.text().then(function(t){st.textContent=t;});})"
+                      ".catch(function(e){st.textContent='Error de red: '+e;});"
+                      "});"
+                      "</script>");
 
     return send_page_close(req);
 }
@@ -599,13 +624,69 @@ static esp_err_t settings_post_handler(httpd_req_t *req)
     }
     camera_apply_settings();
 
-    if (send_page_open(req, "Ajustes guardados") == ESP_OK) {
-        send_chunk(req, "<h2>Ajustes de imagen guardados</h2>"
-                          "<p class='muted'>Se aplicaron al sensor. "
-                          "<a href='/settings'>Volver</a> o "
-                          "<a href='/monitor'>ver el monitor</a>.</p>");
-        send_page_close(req);
+    // Texto plano: el llamador normal es el fetch() del formulario en
+    // /monitor, que solo muestra esto como mensaje de estado (ver JS ahi).
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    httpd_resp_send(req, "Guardado y aplicado.", HTTPD_RESP_USE_STRLEN);
+    return ESP_OK;
+}
+
+// /settings quedó fusionada dentro de /monitor; se deja como redirect para
+// no romper enlaces o bookmarks viejos.
+static esp_err_t settings_get_handler(httpd_req_t *req)
+{
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "/monitor");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
+// Dispara una captura y subida real al backend usando la config remota
+// actual (la misma que usa el loop programado en app_main.c), para
+// verificar en el momento que el backend recibe/procesa la imagen sin
+// esperar al próximo intervalo.
+static esp_err_t capture_now_post_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+
+    remote_config_t cfg;
+    if (backend_client_fetch_config(&cfg) != ESP_OK || !cfg.valid) {
+        httpd_resp_send(req, "Error: no se pudo obtener la configuracion del backend",
+                          HTTPD_RESP_USE_STRLEN);
+        return ESP_OK;
     }
+
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    if (camera_capture_jpeg(cfg.image_width, cfg.image_height, cfg.image_jpeg_quality,
+                              cfg.image_max_kb, &buf, &len) != ESP_OK) {
+        httpd_resp_send(req, "Error: fallo la captura de camara", HTTPD_RESP_USE_STRLEN);
+        return ESP_OK;
+    }
+
+    // Copiar y soltar la camara antes de subir (misma razón que en
+    // app_main.c: la subida por red no debe dejar tomado el mutex de
+    // captura).
+    uint8_t *copy = malloc(len);
+    if (copy) {
+        memcpy(copy, buf, len);
+    }
+    camera_release();
+
+    char msg[160];
+    if (!copy) {
+        snprintf(msg, sizeof(msg), "Error: sin memoria para copiar la captura");
+    } else if (backend_client_upload(copy, len, cfg.stream_id) == ESP_OK) {
+        snprintf(msg, sizeof(msg), "OK: %u bytes subidos, el backend deberia procesarla en breve",
+                  (unsigned)len);
+        provisioning_status_set_capture(true, "forzada manualmente desde /monitor");
+    } else {
+        snprintf(msg, sizeof(msg), "Error: la captura se tomo pero fallo la subida al backend");
+        provisioning_status_set_capture(false, "forzada manualmente, fallo la subida");
+    }
+    free(copy);
+
+    httpd_resp_send(req, msg, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
 
@@ -729,7 +810,7 @@ esp_err_t provisioning_server_start(void)
 
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 10;
+    config.max_uri_handlers = 12;
     // El default (4096) no alcanza: send_page_open() usa un buffer de 3200
     // bytes en la pila de la tarea del httpd (la CSS compartida), sumado al
     // buffer propio de cada handler (hasta ~1KB) y al overhead de snprintf.
@@ -756,6 +837,8 @@ esp_err_t provisioning_server_start(void)
         .uri = "/settings", .method = HTTP_GET, .handler = settings_get_handler};
     static const httpd_uri_t settings_post_uri = {
         .uri = "/settings", .method = HTTP_POST, .handler = settings_post_handler};
+    static const httpd_uri_t capture_now_uri = {
+        .uri = "/capture-now", .method = HTTP_POST, .handler = capture_now_post_handler};
     static const httpd_uri_t ota_get_uri = {
         .uri = "/ota", .method = HTTP_GET, .handler = ota_get_handler};
     static const httpd_uri_t ota_post_uri = {
@@ -767,6 +850,7 @@ esp_err_t provisioning_server_start(void)
     httpd_register_uri_handler(server, &monitor_uri);
     httpd_register_uri_handler(server, &settings_uri);
     httpd_register_uri_handler(server, &settings_post_uri);
+    httpd_register_uri_handler(server, &capture_now_uri);
     httpd_register_uri_handler(server, &ota_get_uri);
     httpd_register_uri_handler(server, &ota_post_uri);
 

@@ -11,6 +11,10 @@
 static const char *TAG = "camera";
 static camera_fb_t *s_last_fb = NULL;
 static SemaphoreHandle_t s_capture_mutex;
+// Frames a descartar tras cambiar de resolución para darle tiempo a AEC/AGC
+// a reconverger. Cada uno cuesta una captura completa (más caro cuanto más
+// grande la resolución), así que es un trade-off latencia/exposición.
+#define RESOLUTION_CHANGE_SETTLE_FRAMES 5
 // Última resolución aplicada al sensor; arranca en FRAMESIZE_INVALID para
 // forzar el descarte del primer frame también en la primerísima captura.
 static framesize_t s_current_framesize = FRAMESIZE_INVALID;
@@ -122,13 +126,16 @@ esp_err_t camera_capture_jpeg(int width, int height, int quality, int max_kb,
     if (desired != s_current_framesize) {
         sensor->set_framesize(sensor, desired);
         s_current_framesize = desired;
-        // El sensor tarda un frame en aplicar la nueva resolución: el
-        // siguiente fb_get() puede devolver todavía un frame con el tamaño
-        // anterior. Se descarta ese primer frame "de transición" para que
-        // el que se devuelve al llamador ya sea el correcto.
-        camera_fb_t *stale = esp_camera_fb_get();
-        if (stale) {
-            esp_camera_fb_return(stale);
+        // El sensor tarda varios frames en aplicar la nueva resolución Y en
+        // reconverger AEC/AGC (auto-exposición/ganancia) al nuevo modo; con
+        // un solo frame descartado la imagen queda sub-expuesta ("oscura")
+        // hasta que algo más vuelva a disparar una captura. Se descartan
+        // unos cuantos frames de transición para dar tiempo a converger.
+        for (int i = 0; i < RESOLUTION_CHANGE_SETTLE_FRAMES; i++) {
+            camera_fb_t *stale = esp_camera_fb_get();
+            if (stale) {
+                esp_camera_fb_return(stale);
+            }
         }
     }
 

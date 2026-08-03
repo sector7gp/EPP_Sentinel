@@ -63,9 +63,12 @@ idf.py -p <puerto> flash monitor
    `device_id` y `device_token`, guardar. El dispositivo reinicia solo y
    entra en operación normal.
 5. `http://<host>/status` muestra el estado de la última captura/subida en
-   cualquier momento. `/monitor` da una vista en vivo (auto-refresh) y
-   `/settings` deja elegir la resolución/calidad que usa esa vista, sin
-   tocar la configuración real de captura (esa la maneja el backend).
+   cualquier momento. `/monitor` da una vista en vivo (auto-refresh cada
+   0.5s), con preset de resolución/calidad (no toca la config real de
+   captura, esa la maneja el backend), botón para forzar una captura+subida
+   real ahora mismo, y el formulario de ajustes de imagen del sensor
+   (brillo/contraste/AWB/AEC/AGC/etc, ver `camera_settings.h`), que sí
+   persiste y se guarda sin recargar la página. `/settings` redirige ahí.
 
 ## Actualizar firmware por OTA
 
